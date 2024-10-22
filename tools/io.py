@@ -8,7 +8,7 @@ from scipy.io import loadmat as tradLoadmat
 import h5py 
 import numpy as np
 import os
-
+import mat73
 # Function definitions 
 
 
@@ -39,18 +39,20 @@ def get_experiment_file(data_path, subject='Sa', task='peripheralFocus', date='2
 
     '''
     subject_name = subject[0:2].lower()
-    query={subject_name,task,date,area}
+    date_short = date[2:]
+    query={subject_name,task,date_short,area}
     experiment_files = []
     experiment_files_path = []
-    for root, dirs, files in os.walk(data_path):
-        for file in sorted(files):
-            if(all(i.lower() in file.lower() for i in query)):
-                experiment_files.append(file)
-                experiment_files_path.append(root)
+    for item in os.listdir(data_path):
+        item_path=data_path+item
+        if os.path.isdir(item_path):
+             continue
+        if(all(i.lower() in item.lower() for i in query)):
+            experiment_files.append(item)
 
     assert len(experiment_files)==1
     
-    return experiment_files, experiment_files_path
+    return experiment_files[0]
 
 
 ## Functions needed to load mat files into python
@@ -70,7 +72,28 @@ def LoadHdf5Mat(matfilePath):
                 elif type(out[key]) is h5py.h5r.Reference:
                     out[key] = UnpackHdf5(hdf5Matfile,out[key])
                         
-
+                
+                    
+                    
+#                        valsLambda = (lambda hMF=hdf5Matfile, hG=hdf5Group, k=key: [hMF[hG[k][row, col]] for row in range(hG[k].shape[0]) for col in range(hG[k].shape[1])])
+#                        valsList = list(valsLambda())
+#                        for idx, val in enumerate(valsList):
+#                            if type(val) is h5py._hl.group.Group:
+#                                valsList[idx] = UnpackHdf5(hdf5Matfile,val)
+#                            elif 'MATLAB_empty' in val.attrs.keys(): # deal with empty arrays
+#                                valsList[idx] = np.ndarray(0)
+#                            elif np.any([type(nestedVal) is h5py.h5r.Reference for nestedVal in val[()][0]]):
+#                                valsList[idx] = np.ndarray(val.shape)
+#                                for row in range(val.shape[0]):
+#                                    for col in range(val.shape[1]):
+#                                        #if valsList[idx] = val[()]
+#                                        if type(val[()][row, col]) is h5py.h5r.Reference:
+#                                            valsList[idx][row,col] = UnpackHdf5(hdf5Matfile,hdf5Group[val[()][row,col]])
+#                                        else:
+#                                            valsList[idx][row,col] = val[()][row,col]
+#                            else:
+#                                valsList[idx] = val[()]
+#                        out[key] = 5
         elif type(hdf5Group) is h5py._hl.dataset.Dataset:
             out = np.ndarray(hdf5Group.shape, dtype=object)
             
@@ -195,7 +218,28 @@ def LoadHdf5Mat(matfilePath):
                 
                 out = deref[()]
                 out = out.T # for some reason Matlab transposes when saving...
-
+#                except (AttributeError, TypeError) as err:
+#                    if type(out) is h5py._hl.group.Group:
+#                        out = np.asarray(UnpackHdf5(hdf5Matfile, deref))
+#                    else:
+#                        raise RuntimeError('problem with forming iterator of a non-group b')
+                    
+#            elif type(hdf5Group) is h5py.h5r.Reference:
+#                out = hdf5Matfile[hdf5Group]
+#                iterRef = np.nditer(out, ['refs_ok'])
+#                for val in iterRef:
+#                    if type(val[()]) is h5py._hl.group.Group:
+#                        UnpackHdf5(hdf5Matfile, val[()])
+#                    elif type(val[()]) is h5py._hl.dataset.Dataset:
+#                        UnpackHdf5(hdf5Matfile, val[()])
+#                    elif type(val[()]) is h5py.h5r.Reference:
+#                        UnpackHdf5(hdf5Matfile, val[()])
+#                    else:
+#                        if 'MATLAB_empty' in out.attrs.keys(): # deal with empty arrays
+#                            np.ndarray(0)
+#                        else:
+#                            val[()]
+#                out = iterRef.operands[0]
         
         return out
     
@@ -218,9 +262,9 @@ def LoadHdf5Mat(matfilePath):
             
     return out
  
-
-def load_mat_file(mat_file_path):
     
+def load_mat_file(mat_file_path):
+    # Emilio's code for loading mat files
     try:
         annots = tradLoadmat(mat_file_path)
     except (NotImplementedError, MemoryError):
@@ -228,15 +272,22 @@ def load_mat_file(mat_file_path):
         
     return annots
 
-def load_session_dat(data_path,subject=subject,area=area,task=task,date=date):
+def load_mat73(file_path):
+    # Uses mat73 package to load mat files
+    dat = mat73.loadmat(file_path, use_attrdict=True) 
+    return dat
+
+
+def load_session_dat(data_path,subject='Sa',area='M1',task='Focus',date='0000'):
+    
     '''
     Calls get_experiment_files to get the appropriate session path + file name. Then calls load_mat_file
 
     '''
-    session_file,session_file_path = get_experiment_file(data_path,subject=subject,area=area,task=task,date=date)
+    session_file = get_experiment_file(data_path,subject=subject,area=area,task=task,date=date)
 
     try:
-        dat = load_mat_file(session_file_path+'/'+session_file)
+        dat = load_mat73(data_path+session_file)
     except:
         raise Exception("Failed to load dat file")
     
