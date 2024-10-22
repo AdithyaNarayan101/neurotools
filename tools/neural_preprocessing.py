@@ -6,7 +6,7 @@ Preprocessing script for neural data. Performs binning of spikes for Smith lab d
 
 def bin_spikes(dat, bin_size=1, channels=list(range(64)), filter_spike_codes=[1], 
                align_type='start',start_code=70, start_offset = -500, end_code=11,
-                end_offset=1000, total_length=2500, cutoff = True)
+                end_offset=1000, total_length=2500, cutoff = False)
 
 '''
 Bin spikes (works for smith lab data)
