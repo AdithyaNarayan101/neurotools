@@ -12,6 +12,25 @@ import mat73
 # Function definitions 
 
 
+def read_txt_file(file_name):
+    import ast
+
+    with open(file_name, 'r') as file:
+        data = file.read()
+        data_dict = ast.literal_eval(data)
+    return data_dict
+
+def load_concat_subject_data(subject,all_dates,data_path,data_type='behav'):
+    # Load each session's data and concatenate into a single dataframe: 
+    df=[]
+    for date in all_dates:
+        df.append(pd.read_csv(data_path+'df_behav_'+date+'.csv'))
+    
+    df=pd.concat(df,ignore_index=True)
+    
+    return df
+
+
 def load_trial_codes(trial_codes_path):
 
     '''
