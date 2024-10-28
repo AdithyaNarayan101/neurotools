@@ -6,6 +6,7 @@ Module to analyze behavior
 '''
 import itertools
 import pandas as pd
+import numpy as np
 
 class behavior_metrics:
     ''' 
@@ -48,9 +49,9 @@ class behavior_metrics:
         counts_denominator = filtered_df[self.result].isin(denominator_outcomes).sum()
         
         # Calculate rate, avoiding division by zero
-        rate = counts_numerator / counts_denominator if counts_denominator > 0 else 0
+        rate = counts_numerator / counts_denominator if counts_denominator > 0 else np.nan
         
-        return rate
+        return rate*100
 
     def outcome_rate_by_conditions(self, numerator_outcomes, denominator_outcomes, conditions):
         
