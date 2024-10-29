@@ -9,6 +9,7 @@ import h5py
 import numpy as np
 import os
 import mat73
+import pandas as pd
 # Function definitions 
 
 
@@ -24,7 +25,7 @@ def load_concat_subject_data(subject,all_dates,data_path,data_type='behav'):
     # Load each session's data and concatenate into a single dataframe: 
     df=[]
     for date in all_dates:
-        df.append(pd.read_csv(data_path+'df_behav_'+date+'.csv'))
+        df.append(pd.read_csv(data_path+'df_'+data_type+'_'+date+'.csv'))
     
     df=pd.concat(df,ignore_index=True)
     
