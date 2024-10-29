@@ -53,15 +53,17 @@ class behavior_metrics:
         
         return rate*100
 
-    def outcome_rate_by_conditions(self, numerator_outcomes, denominator_outcomes, conditions):
+    def outcome_rate_by_conditions(self, conditions, metric_info):
         
         """Create a DataFrame with outcome rates for each combination of condition values.
             Input: 
-                numerator_outcomes : List of outcomes in the numerator 
-                denominator_outcomes: List of outcomes in the denominiator
                 conditions: Pairs of key-value arguments. Each key is a column,
                             each value is a list of values that column can take
                             e.g. {'Reward Size'=['Small','Large']}
+                metric_info: dict with two entries
+                    numerator : List of outcomes in the numerator 
+                    denominator: List of outcomes in the denominiator
+                
                         
             Output:
                  df with outcome rates (rows) by conditions (columns)
@@ -74,15 +76,20 @@ class behavior_metrics:
         for value_combination in itertools.product(*conditions.values()):
             condition_dict = dict(zip(conditions.keys(), value_combination)) # Dict with each combination of condition-values
             # Compute the outcome rate for this combination
-            rate = self.outcome_rate_subselect_trials(numerator_outcomes, denominator_outcomes, condition_dict)
+            rate = self.outcome_rate_subselect_trials(metric_info['numerator'], metric_info['denominator'], condition_dict)
             # Append results to the list
-            results.append({**condition_dict, 'Outcome Rate': rate})
+            results.append({**condition_dict, 'Value': rate})
             
         # Create a DataFrame from the results
         result_df = pd.DataFrame(results)
         
         return result_df
-
+    
+    
+    
+    
+        
+    
 
 
         

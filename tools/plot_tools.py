@@ -105,15 +105,16 @@ Define figure plotting functions
 
 """
 
-def make_outcome_rate_figure(fig, behav_metrics, metrics, conditions, x_label, split_label = '', split_cond = '', plot_individual_sessions = True):
+def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, conditions, x_label, split_label = '', split_cond = '', plot_individual_sessions = True):
 
     '''
-    Function to plot various behavioral metrics (like success rates, motor accuracy etc.) as a function of a condition (e.g. Change Magnitude). 
+    Function to plot various metrics (like success rates, RT, decoding accuracy etc.) as a function of a condition (e.g. Change Magnitude)
 
     Input: 
         fig: Plotly figure with subplots 
-        behav_metrics: Object of class behavior_metrics (see tools.behavior)
-        metrics : dict specifying all the metrics to be plotted and how to compute it (i.e. the trial outcomes to be counted in the numerator/denominator)
+        data: Object or pd.DataFrame
+        func_compute_metric: function name, either attribute of data (if object) to operate on data (if dataframe)
+        metrics : dict specifying all the metrics to be plotted and how to compute it (e.g. the trial outcomes to be counted in the numerator/denominator)
         conditions: dict with the condition names and unique values it can take (e.g. {'Reward Size': ['Small','Medium','Large']})
         x_label: condition-name to be used for x-axis
         split_label: condition-name being split by
@@ -140,10 +141,17 @@ def make_outcome_rate_figure(fig, behav_metrics, metrics, conditions, x_label, s
 
     for metric in metrics:
         iMetric+=1
-        results[metric]=behav_metrics.outcome_rate_by_conditions(numerator_outcomes=metrics[metric]['numerator']
-                                                     ,denominator_outcomes=metrics[metric]['denominator'],
-                                                    conditions=conditions)
-
+        
+        # Call func_compute_metric of object data with its arguments: e.g. behavior - behavior_metrics.outcome_rate_by_conditions
+        if isinstance(data, object) and not isinstance(data, type) and not isinstance(data, pd.DataFrame):
+            results[metric] = call_object_func(data, func_compute_metric,
+                                                    conditions=conditions, metric_info=metrics[metric])
+         
+        # If data is a dataframe, call func_compute_metric directly with its arguments: e.g. general.mean_by_condition
+        elif isinstance(data, pd.DataFrame):
+            results[metric] = func_compute_metric(data, conditions=conditions, metric_info=metrics[metric])
+        
+        # Store results in 
         results[metric] = results[metric].sort_values(by=x_label)
         
         if(split_label != ''):
@@ -168,8 +176,8 @@ def make_outcome_rate_figure(fig, behav_metrics, metrics, conditions, x_label, s
 
         # Get Mean and SE by condition using groupby: 
         df_summary=results[metric].groupby(x_label).agg(
-            Mean=('Outcome Rate','mean'),
-            SE = ('Outcome Rate',standard_error)
+            Mean=('Value','mean'),
+            SE = ('Value',standard_error)
         ).reset_index()
         
         # Sorting results dataframe so that the order of values of x-label is preserved 
@@ -199,15 +207,14 @@ def make_outcome_rate_figure(fig, behav_metrics, metrics, conditions, x_label, s
             session_num = 0
             for session in all_sessions:
                 results_session = results[metric][results[metric]['Session']==session].reset_index(drop=True)
-                results_session=results_session.dropna(subset=['Outcome Rate'])
-                fig.add_trace(go.Scatter(x = results_session[x_label],y = results_session['Outcome Rate'], mode='lines', line=dict(width=0.5, dash = dash_type, color=session_colors[session_num]), name = str(session)+' '+split_cond, legendgroup = str(session)+' '+split_cond, showlegend = legend_flag), row = 1, col = iMetric)
+                results_session=results_session.dropna(subset=['Value'])
+                fig.add_trace(go.Scatter(x = results_session[x_label],y = results_session['Value'], mode='lines', line=dict(width=0.5, dash = dash_type, color=session_colors[session_num]), name = str(session)+' '+split_cond, legendgroup = str(session)+' '+split_cond, showlegend = legend_flag), row = 1, col = iMetric)
                 session_num +=1
 
         legend_flag = False 
     
     # Clean up figure:
     fig.update_layout(width=2000,height=400)       
-    fig['layout']['yaxis']['title']='Percentage(%)'
     fig.update_xaxes(title_text=x_label)
     
     return fig
