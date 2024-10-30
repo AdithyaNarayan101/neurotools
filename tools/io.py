@@ -4,7 +4,7 @@ Module with functions for input-output operations.
 '''
 
 # Import stuff
-from scipy.io import loadmat as tradLoadmat
+from scipy.io import loadmat as trad_load_mat
 import h5py 
 import numpy as np
 import os
@@ -286,7 +286,7 @@ def LoadHdf5Mat(matfilePath):
 def load_mat_file(mat_file_path):
     # Emilio's code for loading mat files
     try:
-        annots = tradLoadmat(mat_file_path)
+        annots = trad_load_mat(mat_file_path)
     except (NotImplementedError, MemoryError):
         annots = LoadHdf5Mat(mat_file_path)
         
@@ -309,6 +309,9 @@ def load_session_dat(data_path,subject='Sa',area='M1',task='Focus',date='0000'):
     try:
         dat = load_mat73(data_path+session_file)
     except:
-        raise Exception("Failed to load dat file")
+        try:
+            dat = trad_load_mat(data_path+session_file)
+        except:
+            raise Exception("Failed to load dat file")
     
-    return dat['dat']
+    return dat
