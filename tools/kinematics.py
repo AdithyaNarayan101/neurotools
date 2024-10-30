@@ -37,10 +37,13 @@ def compute_kinematics(trajectory, low_pass_filter='butter',low_pass_threshold=1
     elif(threhold_type=='common'):
         velocity_threshold_trial = velocity_threshold # This threshold should've been computed across trials
 
-
-    response_time = np.argwhere(interp_vel > velocity_threshold_trial)[0][0] / fs * 1000 # ms, locked to target onset
-    peak_vel_time =    np.argwhere(interp_vel == peak_vel)[0][0] / fs * 1000 # ms, locked to target onset
-        
+    try:
+        response_time = np.argwhere(interp_vel > velocity_threshold_trial)[0][0] / fs * 1000 # ms, locked to target onset
+        peak_vel_time =    np.argwhere(interp_vel == peak_vel)[0][0] / fs * 1000 # ms, locked to target onset
+    except:
+        response_time = np.nan
+        peak_vel_time = np.nan
+        print("Warning: Velocity did not cross threshold. RT not stored")
     kinematics = {'Response Time':response_time, 'Peak Velocity':peak_vel, 'Peak Velocity Time':peak_vel_time, 'Velocity Profile':interp_vel }
 
     if plot_diagnostic: # Plots velocity profile + RT for this trial
