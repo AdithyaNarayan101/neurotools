@@ -46,7 +46,7 @@ def get_color_map():
         'Reward Size':{'Small':'pink','Medium':'red','Large':'darkred'},
         'Reward Size Hex':{'Small':'#FFC0CB','Medium':'#FF0000','Large':'#8B0000'},
         'Focus Block Hex': {'Trivial':'#000000','Easy':'#0096FF','Hard':'#00008B'},
-        'Focus Block': {'Trivial':'black','Easy':'lightblue','Hard':'darkblue'},
+        'Focus Block': {'Trivial':'cyan','Easy':'lightblue','Hard':'darkblue'},
         'Target Size': {'Tiny':'darkgreen','Huge':'lightgreen'},
         'Target Size Hex': {'Tiny':'#023020','Huge':'#90EE90'},
         'Change Idx Hex': {1: '#00008B', 2: '#0000CD', 3: '#0000FF', 4: '#4169E1', 5: '#6495ED', 6: '#87CEFA', 7: '#00BFFF', 8: '#1E90FF', 9: '#00CED1', 10: '#20B2AA', 11: '#3CB371'}
@@ -97,15 +97,38 @@ def generate_color_list(num_colors, cmap_name = 'turbo', output_format = 'hex'):
 
 
 
+"""
 
+Define plotting helper functions
 
+"""
+def make_bg_white(fig, rows, cols):
+    """
+    Update a Plotly figure to have a white background and black axes.
 
+    Parameters:
+        fig: plotly.graph_objects.Figure
+            The Plotly figure to be updated.
+    """
+    # Set the background colors
+    fig.update_layout(
+        paper_bgcolor='white',  # Background color of the entire figure
+        plot_bgcolor='white'    # Background color of the plotting area
+    )
+    
+    
+
+    for row in range(1, rows + 1):
+        for col in range(1, cols + 1):
+            fig.update_xaxes(linecolor='black', tickcolor='black', row=row, col=col)
+            fig.update_yaxes(linecolor='black', tickcolor='black', row=row, col=col)
+    return fig
 """
 Define figure plotting functions
 
 """
 
-def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, conditions, x_label, split_label = '', split_cond = '', plot_individual_sessions = True):
+def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, conditions, x_label, split_label = '', split_cond = '', plot_individual_sessions = True, column_num=1, column_num_type='automatic'):
 
     '''
     Function to plot various metrics (like success rates, RT, decoding accuracy etc.) as a function of a condition (e.g. Change Magnitude)
@@ -194,7 +217,10 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
         
         
         # Add trace
-        fig.add_trace(go.Scatter(x=df_summary[x_label],y=df_summary['Mean'],error_y=dict(array=df_summary['SE']), line=dict(width=4,color=line_color), marker = dict(size=10,color=x_colors), name = 'Mean +/- SE '+split_cond, legendgroup = 'Mean +/- SE '+split_cond, showlegend = legend_flag), row = 1,col = iMetric)
+        if(column_num_type=='automatic'):
+            column_num=iMetric # If column number specified, add trace to that column (used for plotting different subjects). Else add to column iMetric
+            
+        fig.add_trace(go.Scatter(x=df_summary[x_label],y=df_summary['Mean'],error_y=dict(array=df_summary['SE']), line=dict(width=4,color=line_color), marker = dict(size=15,color=x_colors), name = 'Mean +/- SE '+split_cond, legendgroup = 'Mean +/- SE '+split_cond, showlegend = legend_flag), row = 1,col = column_num)
 
         
         ## Plot individual sessions:
@@ -208,13 +234,16 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
             for session in all_sessions:
                 results_session = results[metric][results[metric]['Session']==session].reset_index(drop=True)
                 results_session=results_session.dropna(subset=['Value'])
-                fig.add_trace(go.Scatter(x = results_session[x_label],y = results_session['Value'], mode='lines', line=dict(width=0.5, dash = dash_type, color=session_colors[session_num]), name = str(session)+' '+split_cond, legendgroup = str(session)+' '+split_cond, showlegend = legend_flag), row = 1, col = iMetric)
+                results_session[x_label] = pd.Categorical(results_session[x_label], categories=conditions[x_label], ordered=True)
+                results_session = results_session.sort_values(by=x_label)
+                fig.add_trace(go.Scatter(x = results_session[x_label],y = results_session['Value'], mode='lines', line=dict(width=0.5, dash = dash_type, color=session_colors[session_num]), name = str(session)+' '+split_cond, legendgroup = str(session)+' '+split_cond, showlegend = legend_flag), row = 1, col = column_num)
                 session_num +=1
 
         legend_flag = False 
     
     # Clean up figure:
-    fig.update_layout(width=2000,height=400)       
+    width=300*len(metrics)
+    fig.update_layout(width=width,height=400)       
     fig.update_xaxes(title_text=x_label)
     
     return fig
