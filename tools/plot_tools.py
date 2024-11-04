@@ -39,34 +39,6 @@ def generate_color_circle(start=0, end=360, step=5):
     return color_dict
 
 
-def get_color_map():
-    color_circle=generate_color_circle(start=0,end=360,step=5)
-    color_map={
-        'Reward Size Classic':{'Small':'Red','Medium':'Orange','Large':'Blue'},
-        'Reward Size':{'Small':'pink','Medium':'red','Large':'darkred'},
-        'Reward Size Hex':{'Small':'#FFC0CB','Medium':'#FF0000','Large':'#8B0000'},
-        'Focus Block Hex': {'Trivial':'#000000','Easy':'#0096FF','Hard':'#00008B'},
-        'Focus Block': {'Trivial':'cyan','Easy':'lightblue','Hard':'darkblue'},
-        'Target Size': {'Tiny':'darkgreen','Huge':'lightgreen'},
-        'Target Size Hex': {'Tiny':'#023020','Huge':'#90EE90'},
-        'Change Idx Hex': {1: '#00008B', 2: '#0000CD', 3: '#0000FF', 4: '#4169E1', 5: '#6495ED', 6: '#87CEFA', 7: '#00BFFF', 8: '#1E90FF', 9: '#00CED1', 10: '#20B2AA', 11: '#3CB371'}
-
-,
-
-        'Target Angle Hex':color_circle
-    }
-
-    return color_map
-
-def get_dash_map():
-    color_map={
-        'Reward Size':{'Small':'dot','Medium':'dash','Large':'solid'},
-        'Focus Block': {'Trivial':'dot','Easy':'dash','Hard':'solid'},
-        'Target Size': {'Tiny':'dash','Huge':'solid'},
-    }
-
-    return color_map
-
 
 def generate_color_list(num_colors, cmap_name = 'turbo', output_format = 'hex'):
     """
@@ -94,7 +66,6 @@ def generate_color_list(num_colors, cmap_name = 'turbo', output_format = 'hex'):
         colors = ['#{:02x}{:02x}{:02x}'.format(int(r * 255), int(g * 255), int(b * 255)) for r, g, b, _ in colors]
     
     return colors
-
 
 
 """
@@ -128,7 +99,7 @@ Define figure plotting functions
 
 """
 
-def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, conditions, x_label, split_label = '', split_cond = '', plot_individual_sessions = True, column_num=1, column_num_type='automatic'):
+def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, conditions, x_label, split_label = '', split_cond = '', plot_individual_sessions = True, column_num=1, column_num_type='automatic',color_map='black',dash_map='solid'):
 
     '''
     Function to plot various metrics (like success rates, RT, decoding accuracy etc.) as a function of a condition (e.g. Change Magnitude)
@@ -150,9 +121,7 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
         neurotools: behavior, general_functions
 
     '''
-    # Get color map
-    color_map=get_color_map()
-    dash_map=get_dash_map()
+    
     
     # Empty dict to store results
     results={} 
@@ -183,8 +152,11 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
             results[metric]=results[metric][results[metric][split_label]==split_cond].reset_index(drop=True)
             
             # Get line-color for the condition-value specified by split_label-split_cond
-            line_color = color_map[split_label][split_cond]
-            
+            try:
+                line_color = color_map[split_label][split_cond]
+            except:
+                line_color='black'
+                
             # dash type not specified for certain conditions
             try:
                 dash_type = dash_map[split_label][split_cond]
