@@ -18,6 +18,8 @@ def call_object_func(obj, func_name, *args, **kwargs):
     func = getattr(obj, func_name)
     return func(*args, **kwargs)
 
+def round_array_to_nearest_5(arr):
+    return np.round(arr / 5) * 5
 
 def mean_by_condition(df, metric_info, conditions):
         
