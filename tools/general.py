@@ -21,6 +21,51 @@ def call_object_func(obj, func_name, *args, **kwargs):
 def round_array_to_nearest_5(arr):
     return np.round(arr / 5) * 5
 
+
+def get_unique_labels(df,field_name):
+    # Function to get unique values of df[field_name]
+    unique_labels=np.sort(df[field_name].unique())
+    unique_labels=pd.Series(unique_labels).dropna().tolist() # remove any nans
+    return unique_labels
+
+
+def assign_bins(numbers, min_val, max_val, bin_size):
+    """
+    Assigns bin labels to a list of float numbers based on specified bin parameters.
+
+    Parameters:
+    - numbers (list of float): A list of float numbers to be binned.
+    - min_val (float): The minimum value defining the start of the bins.
+    - max_val (float): The maximum value defining the end of the bins.
+    - bin_size (float): The size of each bin.
+
+    Returns:
+    - bin_labels: A list of integers representing the bin index for each number.
+            Returns None for numbers outside the specified range.
+    - bin_mid: A list of mid-points for each bin.    
+    
+    """
+    # Calculate the number of bins
+    num_bins = int((max_val - min_val) / bin_size)
+    
+    # Initialize a list to store bin labels
+    bin_labels = []
+    bin_mid=[]
+    for number in numbers:
+        
+        if np.isnan(number) or number < min_val or number >= max_val:
+            # If the number is outside the range, append None or a specific label
+            bin_labels.append(None)
+            bin_mid.append(None)
+        else:
+            # Calculate the bin index
+            bin_index = int((number - min_val) / bin_size)
+            bin_labels.append(bin_index)
+            bin_mid.append(min_val + (bin_index + 0.5) * bin_size)
+    
+    return bin_labels, bin_mid
+
+
 def mean_by_condition(df, metric_info, conditions):
         
         """
