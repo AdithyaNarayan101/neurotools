@@ -5,6 +5,18 @@ Compute Reaction Times, Peak Speed, Velocity Profiles from (x,y,t) trajectory da
 
 '''
 import numpy as np
+
+def find_chosen_target(traj,targets):
+    '''
+    Function to find the target that was closest to the 
+    '''
+    dist=targets.copy()
+    for targ in targets:
+        dist[targ]=(np.sqrt( (traj[0]-targets[targ][0])**2 + (traj[1]-targets[targ][1])**2))
+    chosen_target = min(dist, key=dist.get)
+    return chosen_target
+
+
 def butter_lowpass_filter(data, cutoff, fs, order=2):
     from scipy.signal import butter,filtfilt
     nyq = 0.5 * fs # Nyquist Frequency
