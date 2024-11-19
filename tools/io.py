@@ -10,6 +10,7 @@ import numpy as np
 import os
 import mat73
 import pandas as pd
+import pickle
 # Function definitions 
 
 
@@ -21,11 +22,16 @@ def read_txt_file(file_name):
         data_dict = ast.literal_eval(data)
     return data_dict
 
-def load_concat_subject_data(subject,all_dates,data_path,data_type='behav'):
+def load_concat_subject_data(subject,all_dates,data_path,filename='behav',data_type='csv'):
     # Load each session's data and concatenate into a single dataframe: 
     df=[]
     for date in all_dates:
-        df.append(pd.read_csv(data_path+'df_'+data_type+'_'+date+'.csv'))
+        if(data_type=='csv'):
+            df.append(pd.read_csv(data_path+'df_'+filename+'_'+date+'.csv'))
+        
+        elif(data_type=='pkl'):
+            with open(data_path+'df_'+filename+'_'+date+'.pkl', 'rb') as f:
+                df.append(pickle.load(f))
     
     df=pd.concat(df,ignore_index=True)
     
