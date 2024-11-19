@@ -6,6 +6,9 @@ Commonly used functions
 import pandas as pd
 import numpy as np
 import itertools
+import scipy.signal as signal
+
+
 def standard_error(x):
     return x.std() / (len(x) ** 0.5)
 
@@ -106,3 +109,30 @@ def mean_by_condition(df, metric_info, conditions):
         result_df = pd.DataFrame(results)
         
         return result_df
+    
+
+
+def resample_signal(original_signal, original_fs, new_fs):
+    """
+    Resample a signal from an original sampling frequency (original_fs) to a new sampling frequency (new_fs).
+    
+    Parameters:
+        original_signal (numpy.ndarray): The input signal to be resampled.
+        original_fs (float): The original sampling frequency (Hz).
+        new_fs (float): The target sampling frequency (Hz).
+        
+    Returns:
+        numpy.ndarray: The resampled signal.
+        numpy.ndarray: The new time vector corresponding to the resampled signal.
+    """
+    # Calculate the resampling factor
+    resample_factor = new_fs / original_fs
+    
+    # Generate the new time axis
+    t_original = np.arange(0, len(original_signal)) / original_fs
+    t_new = np.arange(0, len(original_signal) * resample_factor) / new_fs
+    
+    # Resample the signal using scipy.signal.resample
+    resampled_signal = signal.resample(original_signal, len(t_new))
+    
+    return resampled_signal, t_new
