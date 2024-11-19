@@ -12,6 +12,8 @@ import plotly.express as px
 from plotly.subplots import make_subplots
 import matplotlib.pyplot as plt
 from tools.general import *
+import plotly.colors
+import matplotlib.colors as mcolors
 
 
 """
@@ -94,6 +96,100 @@ def make_bg_white(fig, rows, cols):
             fig.update_xaxes(linecolor='black', tickcolor='black', row=row, col=col)
             fig.update_yaxes(linecolor='black', tickcolor='black', row=row, col=col)
     return fig
+
+
+
+def hex_to_rgba(hex_color, alpha=1.0):
+    """
+    Convert a hex color to RGBA format with a specified alpha transparency.
+    
+    Parameters:
+        hex_color (str): The hex color code (e.g., '#FF5733').
+        alpha (float): The alpha transparency value (0.0 to 1.0).
+        
+    Returns:
+        str: The color in 'rgba' format (e.g., 'rgba(255, 87, 51, 1.0)').
+    """
+    # Convert hex to RGB tuple (values between 0 and 1)
+    rgb = mcolors.hex2color(hex_color)
+    
+    # Scale RGB values to 0-255
+    r, g, b = [int(c * 255) for c in rgb]
+    
+    # Return the color in 'rgba' format
+    return f'rgba({r}, {g}, {b}, {alpha})'
+
+
+  
+def stdshade(fig, data, x_values, error_type='sem', row=1, col=1, color='#FF5733', name="Mean with Shaded Error", xlabel="Time", ylabel="",legend_flag="False"):
+    """
+    Plot the mean of a set of signals with a shaded region representing the error (standard deviation or standard error).
+    Add the plot to a specific subplot in the existing figure.
+    
+    Parameters:
+        fig (plotly.graph_objects.Figure): The figure to add the subplot trace to.
+        data (list of numpy.ndarray): A list of 2D numpy arrays (each array is a signal to plot).
+        error_type (str): Type of error to show in the shaded region ('std' for standard deviation, 'sem' for standard error of the mean).
+        row (int): The row index of the subplot.
+        col (int): The column index of the subplot.
+        color (str): Color for the mean and shaded region.
+        title (str): Title of the plot.
+        xlabel (str): Label for the x-axis.
+        ylabel (str): Label for the y-axis.
+        legend_flag : True/False 
+        
+    Returns:
+        None: Adds traces to the given subplot in the figure.
+    """
+    # Check if all signals are the same length
+    signal_length = len(data[0])
+    for signal in data:
+        if len(signal) != signal_length:
+            raise ValueError("All signals must have the same length.")
+    
+    # Convert data to a numpy array for easier manipulation
+    data_array = np.array(data)
+    
+    # Calculate the mean of the signals
+    mean_signal = np.mean(data_array, axis=0)
+    
+    # Calculate the error (std or sem)
+    if error_type == 'std':
+        error = np.std(data_array, axis=0)
+    elif error_type == 'sem':
+        error = np.std(data_array, axis=0) / np.sqrt(len(data))
+    else:
+        raise ValueError("Error type must be 'std' or 'sem'.")
+    color_rgba = hex_to_rgba(color,alpha=.4)
+    color_rgba_white = hex_to_rgba("white",alpha=0)
+    # Plot the mean signal in the specified subplot
+    fig.add_trace(go.Scatter(
+        x=x_values, 
+        y=mean_signal, 
+        mode='lines', 
+        name=name, 
+        legendgroup=name,
+        line=dict(color=color, width=1),
+        showlegend=legend_flag
+    ), row=row, col=col)
+    # Add shaded error region in the specified subplot
+    fig.add_trace(go.Scatter(
+        x=np.concatenate([x_values, np.flip(x_values)]),
+        y=np.concatenate([mean_signal - error, np.flip(mean_signal + error)]),
+        fill='toself',
+        fillcolor=color_rgba,  # Using the color with transparency for the shaded region
+        line=dict(color=color_rgba_white),  # No border for the shaded region
+        name='Error Region',
+        showlegend=False
+    ), row=row, col=col)
+    
+    # Update layout for the subplot
+    fig.update_xaxes(title_text=xlabel, row=row, col=col)
+    fig.update_yaxes(title_text=ylabel, row=row, col=col)
+
+
+    
+
 """
 Define figure plotting functions
 
@@ -187,12 +283,11 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
             # If not defined in the color-map, just have data poins be black
             x_colors='black'
         
-        
         # Add trace
         if(column_num_type=='automatic'):
             column_num=iMetric # If column number specified, add trace to that column (used for plotting different subjects). Else add to column iMetric
             
-        fig.add_trace(go.Scatter(x=df_summary[x_label],y=df_summary['Mean'],error_y=dict(array=df_summary['SE']), line=dict(width=4,color=line_color), marker = dict(size=15,color=x_colors), name = 'Mean +/- SE '+split_cond, legendgroup = 'Mean +/- SE '+split_cond, showlegend = legend_flag), row = 1,col = column_num)
+        fig.add_trace(go.Scatter(x=df_summary[x_label],y=df_summary['Mean'],error_y=dict(array=df_summary['SE']), line=dict(width=4,color=line_color), marker = dict(size=15,color=x_colors), name = 'Mean +/- SE '+str(split_cond), legendgroup = 'Mean +/- SE '+str(split_cond), showlegend = legend_flag), row = 1,col = column_num)
 
         
         ## Plot individual sessions:
@@ -208,7 +303,7 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
                 results_session=results_session.dropna(subset=['Value'])
                 results_session[x_label] = pd.Categorical(results_session[x_label], categories=conditions[x_label], ordered=True)
                 results_session = results_session.sort_values(by=x_label)
-                fig.add_trace(go.Scatter(x = results_session[x_label],y = results_session['Value'], mode='lines', line=dict(width=0.5, dash = dash_type, color=session_colors[session_num]), name = str(session)+' '+split_cond, legendgroup = str(session)+' '+split_cond, showlegend = legend_flag), row = 1, col = column_num)
+                fig.add_trace(go.Scatter(x = results_session[x_label],y = results_session['Value'], mode='lines', line=dict(width=0.5, dash = dash_type, color=session_colors[session_num]), name = str(session)+' '+str(split_cond), legendgroup = str(session)+' '+str(split_cond), showlegend = legend_flag), row = 1, col = column_num)
                 session_num +=1
 
         legend_flag = False 
@@ -219,3 +314,110 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
     fig.update_xaxes(title_text=x_label)
     
     return fig
+
+
+
+def plot_reach_by_condition(fig, data,   conditions, x_label, metric = 'Velocity Profile', event_to_time_lock = 'Delay',window = [0,1000], fs=100, split_label = '', split_cond = '', plot_individual_sessions = True, column_num=1, row_num=1, subplot_num_type='automatic',color_map='black',dash_map='solid'):
+    
+    """
+    Function to plot velocity profiles and trajectories by condition
+    
+    """
+    
+    # Empty dict to store results
+    results=[]
+
+    legend_flag = True # Needed to suppress repeats of legend entries appearing for traces across subplots
+       
+#      # Get velocity profile across trials for each condition:
+#     results = get_velocity_profile(data, conditions = conditions, event_to_time_lock = event_to_time_lock, window = window, fs = fs)
+    
+    # Create combinations of values for each condition
+    for value_combination in itertools.product(*conditions.values()):
+        condition_dict = dict(zip(conditions.keys(), value_combination)) # Dict with each combination of condition-values
+        # Get the mean velocity profile for each condition
+        filtered_df = data
+        
+        for condition, value in condition_dict.items():
+            filtered_df = filtered_df[filtered_df[condition] == value].reset_index(drop=True)
+            
+        if(metric == 'Velocity Profile'):
+            vel_profile = np.mean([filtered_df['Velocity Profile'][i][int((filtered_df[event_to_time_lock][i]+window[0])*fs/1000):int((filtered_df[event_to_time_lock][i]+window[1])*fs/1000)] for i in range(len(filtered_df))],0)
+            # Append results to the list
+            results.append({**condition_dict, 'Value': vel_profile})
+        
+        elif(metric == 'Trajectory'):
+            
+            trajectories = ([filtered_df['Trajectory'][i][:,int((filtered_df[event_to_time_lock][i]+window[0])*fs/1000):int((filtered_df[event_to_time_lock][i]+window[1])*fs/1000)] for i in range(len(filtered_df))])
+            # Append results to the list
+            results.append({**condition_dict, 'Value': trajectories})
+
+    # Create a DataFrame from the results
+    results = pd.DataFrame(results)
+    
+    results = results.sort_values(by=x_label)
+    
+    
+    if(split_label != ''):
+
+        # Subselect results only for subset of trials with condition-value specified by split_label-split_cond
+        results=results[results[split_label]==split_cond].reset_index(drop=True)
+        
+        # Get line-color for the condition-value specified by split_label-split_cond
+        try:
+            line_color = color_map[split_label][split_cond]
+        except:
+            line_color='black'
+
+        # dash type not specified for certain conditions
+        try:
+            dash_type = dash_map[split_label][split_cond]
+        except: 
+            dash_type = 'solid'
+
+    else:
+        line_color = 'black' # default line color for mean+/-SE
+        dash_type = 'solid'
+
+    ## Plot Mean +/- SE    
+
+    
+    # Add trace
+    if(subplot_num_type=='automatic'):
+     # If column number specified, add trace to that column (used for plotting different subjects).
+     # Else add to column iMetric
+        column_num=iMetric
+        row_num=1
+        
+        
+    all_unique_labels=np.unique(results[x_label])
+    for i in all_unique_labels:
+        line_color = color_map[x_label][i]
+        results_sub = results[results[x_label]==i].reset_index(drop=True)
+        
+        if(metric == 'Velocity Profile'):
+            x_values=np.linspace(window[0],window[1],len(results_sub['Value'][0]))
+            stdshade(fig, results_sub['Value'], x_values=x_values, row=row_num, col=column_num, color=line_color, name=str(i), legend_flag=legend_flag)
+        
+        elif(metric == 'Trajectory'):
+            
+            
+            traj_sub = [elem for elem in results_sub['Value'][0] if elem.shape == (2,np.diff(window)[0]*fs/1000)]
+            traj_sub=np.array(traj_sub)
+            x_values = np.mean(traj_sub[:,0,:],0)
+            x_error    = np.std(traj_sub[:,0,:],0)/np.sqrt(np.shape(results_sub['Value'])[0])
+            y_values = np.mean(traj_sub[:,1,:],0)
+            y_error    = np.std(traj_sub[:,1,:],0)/np.sqrt(np.shape(results_sub['Value'])[0])
+            
+            fig.add_trace(go.Scatter(x=x_values,y=y_values, error_x=dict(type='data', array=x_error, visible=True),
+    error_y=dict(type='data', array=y_error, visible=True), line=dict(color=line_color)),row=row_num, col=column_num)
+                             
+
+        
+    return fig
+        
+
+    
+    
+    
+    
