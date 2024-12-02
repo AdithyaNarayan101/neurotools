@@ -3,34 +3,131 @@
 Preprocessing script for neural data. Performs binning of spikes for Smith lab data
 
 '''
+import numpy as np
 
-def bin_spikes(dat, bin_size=1, channels=list(range(64)), filter_spike_codes=[1], 
-               align_type='start',start_code=70, start_offset = -500, end_code=11,
-                end_offset=1000, total_length=2500, cutoff = False)
+def bin_spikes(dat, bin_size=.001, channels=list(range(64)), filter_spike_codes=[1], 
+               align_type='start', start_code=70, start_offset=-.5, end_code=11,
+               end_offset=1, total_length=2.5, cutoff=False, fs=30000):
+    '''
+    Bin spikes (works for smith lab data)
 
-'''
-Bin spikes (works for smith lab data)
+    Parameters: 
+        dat : dict
+            Contains 'spiketimesdiff', 'spikeinfo', 'firstspike', 'trialcodes', etc.
+        bin_size : float
+            Size of bin in ms (default = 1ms)
+        channels : list
+            List of channels to include (default 0:63)
+        filter_spike_codes : list
+            List of sorting codes to include (default [1]) : 0/255 is noise, 1 (or above) is spike
+        align_type : str
+            'start' or 'end'. Specifies how to align bins (default = 'start')
+        start_code : int
+            Code for trial start event (default = 70)
+        start_offset : int
+            Offset in ms from start_code to use for binning (default = -500)
+        end_code : int
+            Code for trial end event (default = 11)
+        end_offset : int
+            Offset in ms from end_code to use for binning (default = 1000)
+        total_length : int
+            Total length for trial (default = 2500 ms)
+        cutoff : bool
+            If True, pad matrix with NaNs after start/end codes (default = False)
+        fs : int
+            Sampling frequency (default = 30000 Hz)
 
-***
+    Outputs:
+        binned_spikes : ndarray
+            Spike count matrix with shape (num_channels x num_bins)
+    '''
+    
+    # Get spike times from 'dat'
+    spiketimes = np.cumsum(dat['spiketimesdiff']) + dat['firstspike']
+    spiketimes = np.insert(spiketimes, 0, dat['firstspike'])
 
-Parameters: 
+    # Filter spike events based on 'filter_spike_codes'
+    valid_spikes = np.isin(dat['spikeinfo'][:, 1], filter_spike_codes)
+    spiketimes_filtered = spiketimes[valid_spikes] / fs  # Select valid spikes + Convert to seconds
+    spikechannels = dat['spikeinfo'][valid_spikes, 0]
+    
+    # Map spike channels to indices in the 'channels' list
+    channel_map = {ch: idx for idx, ch in enumerate(channels)}  # Mapping channel numbers to indices
+    valid_channels = np.isin(spikechannels, channels)  # Filter spikes to keep only those from channels in 'channels'
+    
+    spiketimes_filtered = spiketimes_filtered[valid_channels]
+    spikechannels = spikechannels[valid_channels]
+    
+    # Initialize the binned_spikes matrix with rows corresponding to the channels in 'channels'
+    num_channels = len(channels)
+    num_bins = int(total_length / bin_size)
+    binned_spikes = np.zeros((num_channels, num_bins))
+    
+    # Align spikes to the start or end of trial
+    if align_type == 'start':
+        # Get the start time for each trial
+        start_time = (dat['trialcodes'][dat['trialcodes'][:, 1] == start_code, 2] + start_offset)
+        
+        # Select spikes within the desired time window
+        window_start = start_time
+        window_end = (start_time + total_length)
+        relevant_spikes = (spiketimes_filtered >= window_start) & (spiketimes_filtered < window_end)
+        relevant_channels = spikechannels[relevant_spikes]
+        relevant_times = spiketimes_filtered[relevant_spikes]
 
-dat : 'dat' dict extracted from .mat file (after nev2dat)
-bin_size: size of bin in ms (default = 1ms)
-channels: list of channel numbers (default 0:63)
-filter_spike_codes: 'sorting' code or nas sorting code. Default is [1] (can also be 0,1..,255)
-align_type: Specifies if Binning should be done aligned to the 'start' code, 'end' code, or 'both'
-start_code/end_code: Specified code to align bins across trials
-start_offset/end_offset: Offset (in ms) with respect to the start/end codes
-total_length: total length in ms for binning spikes
-cutoff: if True, spike-count-matrix is nan-padded for bins  after end_code (if align=start) or before start_code (if align=end)
+        for channel in np.unique(relevant_channels):
+            # Get spike times for each channel
+            spike_times_for_channel = relevant_times[relevant_channels == channel]
+            # Convert spike times to bin indices
+            spike_bins = np.floor((spike_times_for_channel - window_start) / bin_size).astype(int)
+            # Map channel to its index in 'channels'
+            channel_idx = channel_map[channel]
+            # Increment the corresponding bins for the channel
+            for bin_idx in spike_bins:
+                if 0 <= bin_idx < num_bins:
+                    binned_spikes[channel_idx, bin_idx] += 1
+            
+        if cutoff:
+            # Set bins after end_code to NaN
+            end_times = (dat['trialcodes'][dat['trialcodes'][:, 1] == end_code, 2] + end_offset)
+            for end_time in end_times:
+                end_bin = np.floor((end_time - start_time) / bin_size).astype(int)
+                if 0 <= end_bin < num_bins:
+                    binned_spikes[:, end_bin + 1:] = np.nan
 
-***
+    elif align_type == 'end':
+        # Get the end time for each trial
+        end_time = (dat['trialcodes'][dat['trialcodes'][:, 1] == end_code, 2] + end_offset)
+        
+        # Select spikes within the desired time window
+        window_start = end_time - total_length
+        window_end = end_time
+        relevant_spikes = (spiketimes_filtered >= window_start) & (spiketimes_filtered < window_end)
+        relevant_channels = spikechannels[relevant_spikes]
+        relevant_times = spiketimes_filtered[relevant_spikes]
 
-Outputs: 
+        for channel in np.unique(relevant_channels):
+            # Get spike times for each channel
+            spike_times_for_channel = relevant_times[relevant_channels == channel]
+            # Convert spike times to bin indices
+            spike_bins = np.floor((spike_times_for_channel - window_start) / bin_size).astype(int)
+            # Map channel to its index in 'channels'
+            channel_idx = channel_map[channel]
+            # Increment the corresponding bins for the channel
+            for bin_idx in spike_bins:
+                if 0 <= bin_idx < num_bins:
+                    binned_spikes[channel_idx, bin_idx] += 1
+        
+        if cutoff:
+            # Set bins before start_code to NaN
+            start_times = (dat['trialcodes'][dat['trialcodes'][:, 1] == start_code, 2] + start_offset)
+            for start_time in start_times:
+                start_bin = np.floor((start_time - end_time) / bin_size).astype(int)
+                if 0 <= start_bin < num_bins:
+                    binned_spikes[:, :start_bin] = np.nan
 
-binned_spikes: Spike Count Matrix (number of channels x number of bins)
+    
+    return binned_spikes
 
-'''
 
 
