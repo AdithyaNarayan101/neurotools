@@ -195,7 +195,7 @@ Define figure plotting functions
 
 """
 
-def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, conditions, x_label, split_label = '', split_cond = '', plot_individual_sessions = True, column_num=1, column_num_type='automatic',color_map='black',dash_map='solid'):
+def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, conditions, x_label, split_label = '', split_cond = '', plot_individual_sessions = True, column_num=1, column_num_type='automatic',color_map='black',dash_map='solid',make_scatter_plot=False):
 
     '''
     Function to plot various metrics (like success rates, RT, decoding accuracy etc.) as a function of a condition (e.g. Change Magnitude)
@@ -286,9 +286,26 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
         # Add trace
         if(column_num_type=='automatic'):
             column_num=iMetric # If column number specified, add trace to that column (used for plotting different subjects). Else add to column iMetric
+        if(make_scatter_plot==False):
             
-        fig.add_trace(go.Scatter(x=df_summary[x_label],y=df_summary['Mean'],error_y=dict(array=df_summary['SE']), line=dict(width=4,color=line_color), marker = dict(size=15,color=x_colors), name = 'Mean +/- SE '+str(split_cond), legendgroup = 'Mean +/- SE '+str(split_cond), showlegend = legend_flag), row = 1,col = column_num)
-
+            fig.add_trace(go.Scatter(x=df_summary[x_label],y=df_summary['Mean'],error_y=dict(array=df_summary['SE']), line=dict(width=4,color=line_color), marker = dict(size=15,color=x_colors), name = 'Mean +/- SE '+str(split_cond), legendgroup = 'Mean +/- SE '+str(split_cond), showlegend = legend_flag), row = 1,col = column_num)
+        
+        elif(make_scatter_plot==True):
+            
+            fig.add_trace(go.Scatter(x=df_summary['Mean'][[df_summary.index[0]]], y=df_summary['Mean'][[df_summary.index[-1]]],error_x=dict(array=[df_summary['SE'][0]]),error_y=dict(array=[df_summary['SE'][1]]), marker = dict(size=15,color=x_colors), name = 'Mean +/- SE '+str(split_cond), legendgroup = 'Mean +/- SE '+str(split_cond), showlegend = legend_flag), row = 1,col = column_num)
+            
+#             lower_lim = np.min([df_summary['Mean'][0]- 4*np.std(df_summary['Mean'][0]), df_summary['Mean'][1]- 4*np.std(df_summary['Mean'][1])])
+            lower_lim = np.min([df_summary['Mean'][0]- 30, df_summary['Mean'][1]- 30])
+            if(lower_lim<0):
+                lower_lim=0
+        
+#             upper_lim = np.max([df_summary['Mean'][0]+ 4*np.std(df_summary['Mean'][0]), df_summary['Mean'][1]+ 4*np.std(df_summary['Mean'][1])])
+            
+            upper_lim =np.max([df_summary['Mean'][0]+ 30, df_summary['Mean'][1]+ 30])
+            if(upper_lim>100):
+                upper_lim=100
+            fig.add_trace(go.Scatter(x=[lower_lim,upper_lim],y=[lower_lim,upper_lim],mode='lines',line=dict(color='black')), row = 1,col = column_num)
+            
         
         ## Plot individual sessions:
 
@@ -297,24 +314,39 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
             all_sessions = np.sort(results[metric]['Session'].unique())
 
             session_colors=generate_color_list(num_colors = len(all_sessions), cmap_name = 'turbo', output_format = 'hex') # Gets list of colors
+            
             session_num = 0
             for session in all_sessions:
                 results_session = results[metric][results[metric]['Session']==session].reset_index(drop=True)
                 results_session=results_session.dropna(subset=['Value'])
                 results_session[x_label] = pd.Categorical(results_session[x_label], categories=conditions[x_label], ordered=True)
                 results_session = results_session.sort_values(by=x_label)
-                fig.add_trace(go.Scatter(x = results_session[x_label],y = results_session['Value'], mode='lines', line=dict(width=0.5, dash = dash_type, color=session_colors[session_num]), name = str(session)+' '+str(split_cond), legendgroup = str(session)+' '+str(split_cond), showlegend = legend_flag), row = 1, col = column_num)
+                
+                if(make_scatter_plot==False):
+                    
+                    fig.add_trace(go.Scatter(x = results_session[x_label],y = results_session['Value'], mode='lines', line=dict(width=0.5, dash = dash_type, color=session_colors[session_num]), name = str(session)+' '+str(split_cond), legendgroup = str(session)+' '+str(split_cond), showlegend = legend_flag), row = 1, col = column_num)
+                
+                elif(make_scatter_plot==True):
+                    
+                    fig.add_trace(go.Scatter(x=results_session['Value'][[results_session.index[0]]], y=results_session['Value'][[results_session.index[-1]]], mode='markers', marker=dict(color=session_colors[session_num]), name = str(session)+' '+str(split_cond), legendgroup = str(session)+' '+str(split_cond), showlegend = legend_flag), row = 1, col = column_num)
+                    
+                    
+                
+                    
                 session_num +=1
 
         legend_flag = False 
     
     # Clean up figure:
     width=300*len(metrics)
-    fig.update_layout(width=width,height=400)       
-    fig.update_xaxes(title_text=x_label)
+    fig.update_layout(width=width,height=400)      
+    if(make_scatter_plot):
+        fig.update_xaxes(title_text=results_session[x_label][results_session.index[0]])
+        fig.update_yaxes(title_text=results_session[x_label][results_session.index[-1]])
+    else:
+        fig.update_xaxes(title_text=x_label)
     
     return fig
-
 
 
 def plot_reach_by_condition(fig, data,   conditions, x_label, metric = 'Velocity Profile', event_to_time_lock = 'Delay',window = [0,1000], fs=100, split_label = '', split_cond = '', plot_individual_sessions = True, column_num=1, row_num=1, subplot_num_type='automatic',color_map='black',dash_map='solid'):
@@ -417,6 +449,7 @@ def plot_reach_by_condition(fig, data,   conditions, x_label, metric = 'Velocity
     return fig
         
 
+    
     
     
     
