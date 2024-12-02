@@ -321,3 +321,49 @@ def load_session_dat(data_path,subject='Sa',area='M1',task='Focus',date='0000'):
             raise Exception("Failed to load dat file")
     
     return dat
+
+
+
+# Functions to save/load spike-count arrays with 1ms resolution (that are typically 1s and 0s) more efficiently by storing them as binary arrays.
+
+def save_binary_array(array, filename):
+    """
+    Saves a binary N-D NumPy array (with 1s and 0s) to disk efficiently.
+    
+    Parameters:
+        array (numpy.ndarray): The binary N-D array (1s and 0s).
+        filename (str): The name of the file to store the array.
+    """
+    
+    # Flatten the array to 1D and pack it
+    array_bool = array.astype(np.bool_)
+    flattened = array_bool.reshape(-1)  # Flatten the array to 1D
+    packed = np.packbits(flattened)  # Pack the 1s and 0s into uint8
+    
+    # Save the packed array to disk
+    np.savez_compressed(filename, packed=packed)
+    print(f"Array saved to {filename}")
+
+def load_binary_array(filename, original_shape):
+    """
+    Loads a binary N-D NumPy array from a compressed .npz file and reshapes it back to the original shape.
+    
+    Parameters:
+        filename (str): The file to load the array from.
+        original_shape (tuple): The original shape of the array before saving.
+    
+    Returns:
+        numpy.ndarray: The restored N-D binary array (1s and 0s).
+    """
+    # Load the packed data from disk
+    with np.load(filename) as data:
+        packed = data['packed']  # Access the packed data
+
+    # Unpack the bits and reshape back to the original shape
+    flattened = np.unpackbits(packed)  # Unpack the bits into a 1D array of 1s and 0s
+    restored_array = flattened[:np.prod(original_shape)].reshape(original_shape)  # Reshape to original shape
+    
+    print(f"Array loaded and reshaped to {original_shape}")
+    return restored_array.astype(np.uint8)
+
+
