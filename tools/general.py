@@ -136,3 +136,30 @@ def resample_signal(original_signal, original_fs, new_fs):
     resampled_signal = signal.resample(original_signal, len(t_new))
     
     return resampled_signal, t_new
+
+
+def subselect_trials_idx(df, conditions):
+    """
+    Subselect trials from the DataFrame based on conditions.
+
+    Parameters:
+    - df (pd.DataFrame): The DataFrame containing trial data with rows as trials and columns as various variables.
+    - conditions (dict): A dictionary where keys are column names (field names) and values are lists of conditions.
+    
+    Returns:
+    - idx (pd.Index): The index of rows (trials) that satisfy all conditions.
+    """
+    # Initialize a boolean mask that selects all rows initially (True for all)
+    mask = pd.Series([True] * len(df), index=df.index)
+    
+    # Loop through each condition and update the mask
+    for field_name, possible_conditions in conditions.items():
+        # Ensure the field_name exists in the DataFrame
+        if field_name in df.columns:
+            # Update the mask: select only rows where the field_value is in the list of conditions
+            mask &= df[field_name].isin(possible_conditions)
+        else:
+            raise ValueError(f"Field '{field_name}' not found in the DataFrame.")
+    
+    # Return the index of rows that satisfy all conditions
+    return df[mask].index
