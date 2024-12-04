@@ -14,7 +14,7 @@ import matplotlib.pyplot as plt
 from tools.general import *
 import plotly.colors
 import matplotlib.colors as mcolors
-
+from tools.neural_analyses import *
 
 """
 Define color maps
@@ -121,7 +121,7 @@ def hex_to_rgba(hex_color, alpha=1.0):
 
 
   
-def stdshade(fig, data, x_values, error_type='sem', row=1, col=1, color='#FF5733', name="Mean with Shaded Error", xlabel="Time", ylabel="",legend_flag="False"):
+def stdshade(fig, data, x_values, error_type='sem', row=1, col=1, color='#FF5733', name="Mean with Shaded Error", xlabel="Time", ylabel="",legend_flag=False):
     """
     Plot the mean of a set of signals with a shaded region representing the error (standard deviation or standard error).
     Add the plot to a specific subplot in the existing figure.
@@ -451,6 +451,47 @@ def plot_reach_by_condition(fig, data,   conditions, x_label, metric = 'Velocity
 
     
     
+def plot_PSTH_by_condition(fig, spike_count_train, train_labels, spike_count_test, test_labels, color_map, axis_method='LDA', train_window=[750, 1000], plot_bin_size=1, row_num=1, column_num=1, x_offset=-500):
+    """
+    Plots Peri-Stimulus Time Histogram (PSTH) by condition for test data projected onto a 'Condition Axis' based on the specified axis method and condition labels.
     
+    Parameters:
+    - fig: The figure object to plot on.
+    - spike_count_train: 3D array of spike counts in the training set (trials x neurons x time).
+    - train_labels: Labels corresponding to each trial in the training set.
+    - spike_count_test: 3D array of spike counts in the test set (trials x neurons x time).
+    - test_labels: Labels corresponding to each trial in the test set.
+    - color_map: A dictionary or list of colors for each condition.
+    - axis_method: The method to calculate the axis for dimensionality reduction (default is 'LDA').
+    - train_window: Time window (start, end) to consider for spike counting.
+    - plot_bin_size: The size of the bins to use for the plot (default is 1 ms).
+    - row_num: The row number for subplots (default is 1).
+    - column_num: The column number for subplots (default is 1).
+    """
     
+    # Bin the training spike counts within the specified time window (e.g., [750, 1000] ms)
+    spike_count_bin = np.nanmean(spike_count_train[:,:,train_window[0]:train_window[1]], 2)  # Mean across time window
     
+    # Get the condition axis based on the selected axis method (e.g., LDA, PCA, etc.)
+    cond_axis = get_condition_axes(spike_count_bin, train_labels, axis_method=axis_method)
+    
+    # Bin the test spike counts using the specified bin size
+    spikes_binned = bin_spike_counts(spike_count_test, bin_size=plot_bin_size)
+    
+    # Project the binned test data onto the condition axis
+    proj_data = project_on_axis(np.transpose(spikes_binned, [2, 0, 1]), cond_axis[:, 0])
+    
+    # Define the x-values for plotting based on the bin size and number of time points
+    x_values = (np.arange(0, np.shape(spikes_binned)[2]) * plot_bin_size + (plot_bin_size / 2)) +x_offset
+    
+    # Get all unique labels for the test data
+    all_test_labels = np.unique(test_labels)
+    
+    # Loop through each unique label in the test labels
+    for i in all_test_labels:
+        # For each condition (label), get the corresponding projected data
+        proj_data_for_condition = (proj_data[:, test_labels == i].T) * (1000 / plot_bin_size)  # Convert to spikes per second
+        
+        # Plot the data for this label using the stdshade function (which handles shaded error bars)
+        stdshade(fig, proj_data_for_condition, x_values=x_values, row=row_num, col=column_num, 
+                 color=color_map[i], name=str(i))
