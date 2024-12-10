@@ -26,13 +26,15 @@ def load_concat_subject_data(subject,all_dates,data_path,filename='behav',data_t
     # Load each session's data and concatenate into a single dataframe: 
     df=[]
     for date in all_dates:
-        if(data_type=='csv'):
-            df.append(pd.read_csv(data_path+'df_'+filename+'_'+date+'.csv'))
-        
-        elif(data_type=='pkl'):
-            with open(data_path+'df_'+filename+'_'+date+'.pkl', 'rb') as f:
-                df.append(pickle.load(f))
-    
+        try:
+            if(data_type=='csv'):
+                df.append(pd.read_csv(data_path+'df_'+filename+'_'+date+'.csv'))
+
+            elif(data_type=='pkl'):
+                with open(data_path+'df_'+filename+'_'+date+'.pkl', 'rb') as f:
+                    df.append(pickle.load(f))
+        except:
+            df.append(pd.DataFrame())
     df=pd.concat(df,ignore_index=True)
     
     return df
