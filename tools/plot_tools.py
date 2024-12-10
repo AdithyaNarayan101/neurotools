@@ -292,7 +292,7 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
         
         elif(make_scatter_plot==True):
             
-            fig.add_trace(go.Scatter(x=df_summary['Mean'][[df_summary.index[0]]], y=df_summary['Mean'][[df_summary.index[-1]]],error_x=dict(array=[df_summary['SE'][0]]),error_y=dict(array=[df_summary['SE'][1]]), marker = dict(size=15,color=x_colors), name = 'Mean +/- SE '+str(split_cond), legendgroup = 'Mean +/- SE '+str(split_cond), showlegend = legend_flag), row = 1,col = column_num)
+            fig.add_trace(go.Scatter(x=df_summary['Mean'][[df_summary.index[0]]], y=df_summary['Mean'][[df_summary.index[-1]]],error_x=dict(array=[df_summary['SE'][[df_summary.index[0]]]]),error_y=dict(array=[df_summary['SE'][[df_summary.index[-1]]]]), marker = dict(size=20,color=x_colors), name = 'Mean +/- SE '+str(split_cond), legendgroup = 'Mean +/- SE '+str(split_cond), showlegend = legend_flag), row = 1,col = column_num)
             
 #             lower_lim = np.min([df_summary['Mean'][0]- 4*np.std(df_summary['Mean'][0]), df_summary['Mean'][1]- 4*np.std(df_summary['Mean'][1])])
             lower_lim = np.min([df_summary['Mean'][0]- 30, df_summary['Mean'][1]- 30])
@@ -328,7 +328,7 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
                 
                 elif(make_scatter_plot==True):
                     
-                    fig.add_trace(go.Scatter(x=results_session['Value'][[results_session.index[0]]], y=results_session['Value'][[results_session.index[-1]]], mode='markers', marker=dict(color=session_colors[session_num]), name = str(session)+' '+str(split_cond), legendgroup = str(session)+' '+str(split_cond), showlegend = legend_flag), row = 1, col = column_num)
+                    fig.add_trace(go.Scatter(x=results_session['Value'][[results_session.index[0]]], y=results_session['Value'][[results_session.index[-1]]], mode='markers', marker=dict(size=10, color=session_colors[session_num]), name = str(session)+' '+str(split_cond), legendgroup = str(session)+' '+str(split_cond), showlegend = legend_flag), row = 1, col = column_num)
                     
                     
                 
@@ -341,8 +341,8 @@ def plot_metrics_by_condition(fig, data, func_compute_metric, metrics, condition
     width=300*len(metrics)
     fig.update_layout(width=width,height=400)      
     if(make_scatter_plot):
-        fig.update_xaxes(title_text=results_session[x_label][results_session.index[0]])
-        fig.update_yaxes(title_text=results_session[x_label][results_session.index[-1]])
+        fig.update_xaxes(title_text=str(results_session[x_label][results_session.index[0]]))
+        fig.update_yaxes(title_text=str(results_session[x_label][results_session.index[-1]]))
     else:
         fig.update_xaxes(title_text=x_label)
     
