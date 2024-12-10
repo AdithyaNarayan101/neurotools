@@ -204,7 +204,7 @@ def bin_spike_counts(X, bin_size):
     reshaped_X = X.reshape(num_trials, num_channels, num_bins, bin_size)
     
     # Sum the values in each bin along the 3rd axis (axis=3)
-    binned_X = np.sum(reshaped_X, axis=3)
+    binned_X = np.nansum(reshaped_X, axis=3)
     
     return binned_X
 
