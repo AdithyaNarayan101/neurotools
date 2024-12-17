@@ -495,3 +495,46 @@ def plot_PSTH_by_condition(fig, spike_count_train, train_labels, spike_count_tes
         # Plot the data for this label using the stdshade function (which handles shaded error bars)
         stdshade(fig, proj_data_for_condition, x_values=x_values, row=row_num, col=column_num, 
                  color=color_map[i], name=str(i))
+        
+        
+
+def make_decoding_figure(fig, df_behav, spikes, all_dates, subject_name, train_condition , test_condition, train_window=None, test_window=[0,1400], bin_size=50, subselect_conditions={}, subsample_flag=True, line_color='black', plot_individual_sessions=False, legend_label='', all_split_conditions = None):
+    """
+    Generate decoding figure based on the provided parameters.
+
+    Parameters:
+    - fig : plotly figure 
+    - df_behav: DataFrame containing the behavioral data.
+    - spikes: Dictionary containing spike data for each subject and date.
+    - all_dates: List of all dates for the sessions.
+    - subject_name: Name of the subject (e.g., 'Pumbaa').
+    - test_window: Time window for testing (e.g., [0, 1400]).
+    - train_condition: Condition used to train decoder 
+    - test_condition: Condition used to test decoder
+    - train_window: Time window for training (None if train/test on each bin, or specify start/end e.g. [750,1000])
+    - bin_size: Size of the bin for decoding.
+    - subselect_conditions: Conditions for subsetting trials.
+    - subsample_flag: Whether or not to subsample the data.
+    - line_color: Color of the lines in the plot.
+    - plot_individual_sessions: Whether to plot individual session results.
+    - legend_label : Label to be used in the legend 
+    """
+    accuracies=[]
+    for date in all_dates:
+        
+        df_behav_date = df_behav[df_behav['Session Name']==date].reset_index(drop=True)
+        neural_data = spikes[subject_name][date]
+        neural_data = neural_data[:,:,test_window[0]:test_window[1]]
+        
+        accuracies.append(decode_by_sess(df_behav_date, neural_data, subselect_conditions, train_condition, test_condition, bin_size, train_window, subsample_flag, all_split_conditions))
+        
+        if(plot_individual_sessions):
+            fig.add_trace(go.Scatter(showlegend=True, line=dict(width=.5),marker_color=line_color,x=-500+np.arange(len(accuracies[-1]))*bin_size + (bin_size/2), y=accuracies[-1]))
+    
+    fig.add_trace(go.Scatter(name=legend_label,legendgroup = legend_label, line=dict(width=4), marker_color=line_color,x=-500+test_window[0]+np.arange(len(accuracies[0]))*bin_size + (bin_size/2), y=np.nanmean(accuracies,0), error_y=dict(array = np.std(accuracies,0)/np.sqrt(len(all_dates)))))
+    
+    fig['layout']['title'] = subject_name 
+    fig['layout']['yaxis']['title'] = 'Decoding accuracy'
+    fig['layout']['xaxis']['title'] = 'Time from Target Onset (ms)' 
+
+
