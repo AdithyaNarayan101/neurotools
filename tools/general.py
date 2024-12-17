@@ -138,16 +138,46 @@ def resample_signal(original_signal, original_fs, new_fs):
     return resampled_signal, t_new
 
 
-def subselect_trials_idx(df, conditions):
+# def subselect_trials_idx(df, conditions):
+#     """
+#     Subselect trials from the DataFrame based on conditions.
+
+#     Parameters:
+#     - df (pd.DataFrame): The DataFrame containing trial data with rows as trials and columns as various variables.
+#     - conditions (dict): A dictionary where keys are column names (field names) and values are lists of conditions.
+    
+#     Returns:
+#     - idx (pd.Index): The index of rows (trials) that satisfy all conditions.
+#     """
+#     # Initialize a boolean mask that selects all rows initially (True for all)
+#     mask = pd.Series([True] * len(df), index=df.index)
+    
+#     # Loop through each condition and update the mask
+#     for field_name, possible_conditions in conditions.items():
+#         # Ensure the field_name exists in the DataFrame
+#         if field_name in df.columns:
+#             # Update the mask: select only rows where the field_value is in the list of conditions
+#             mask &= df[field_name].isin(possible_conditions)
+#         else:
+#             raise ValueError(f"Field '{field_name}' not found in the DataFrame.")
+    
+#     # Return the index of rows that satisfy all conditions
+#     return df[mask].index
+
+
+def subselect_trials_idx(df, conditions, return_indices=False):
     """
     Subselect trials from the DataFrame based on conditions.
-
+    
     Parameters:
     - df (pd.DataFrame): The DataFrame containing trial data with rows as trials and columns as various variables.
     - conditions (dict): A dictionary where keys are column names (field names) and values are lists of conditions.
+    - return_indices (bool): Whether to return the indices of the selected trials (default is False).
     
     Returns:
-    - idx (pd.Index): The index of rows (trials) that satisfy all conditions.
+    - tuple or pd.DataFrame: 
+      - If `return_indices=True`, returns a tuple with the subselected DataFrame and the index of rows (trials) that satisfy all conditions.
+      - If `return_indices=False`, returns the subset DataFrame of the trials that satisfy all conditions.
     """
     # Initialize a boolean mask that selects all rows initially (True for all)
     mask = pd.Series([True] * len(df), index=df.index)
@@ -161,5 +191,77 @@ def subselect_trials_idx(df, conditions):
         else:
             raise ValueError(f"Field '{field_name}' not found in the DataFrame.")
     
-    # Return the index of rows that satisfy all conditions
-    return df[mask].index
+    # If return_indices is True, return both the DataFrame and the indices of the selected rows
+    if return_indices:
+        return df[mask].reset_index(drop=True), df[mask].index
+    else:
+        # Otherwise, return the subset DataFrame
+        return df[mask].reset_index(drop=True)
+
+
+
+def subsample_balance_classes(data, labels, return_indices=False):
+    # Ensure that the input labels are a 1D array
+    labels = np.array(labels)
+    
+    # Get unique classes and their indices
+    unique_classes = np.unique(labels)
+    
+    # Initialize lists to collect subsampled data, labels, and indices
+    subsampled_data = []
+    subsampled_labels = []
+    subsampled_indices = []
+    
+    # Find the minimum count of any class in the labels
+    min_class_count = min(np.sum(labels == c) for c in unique_classes)
+    
+    # Loop over each class and subsample
+    for c in unique_classes:
+        # Get indices of the current class
+        class_indices = np.where(labels == c)[0]
+        
+        # Randomly sample 'min_class_count' samples from the current class
+        sampled_indices_class = np.random.choice(class_indices, min_class_count, replace=False)
+        
+        # Add the corresponding data, labels, and indices to the subsample lists
+        subsampled_data.append(data[sampled_indices_class])
+        subsampled_labels.append(labels[sampled_indices_class])
+        subsampled_indices.append(sampled_indices_class)
+    
+    # Concatenate the subsampled data, labels, and indices
+    subsampled_data = np.concatenate(subsampled_data, axis=0)
+    subsampled_labels = np.concatenate(subsampled_labels, axis=0)
+    subsampled_indices = np.concatenate(subsampled_indices, axis=0)
+    
+    # Return the results
+    if return_indices:
+        return subsampled_data, subsampled_labels, subsampled_indices
+    else:
+        return subsampled_data, subsampled_labels
+    
+
+def subsample_trials_df(df, N, return_indices=False):
+    """
+    Randomly subsample N trials from the rows of a Pandas DataFrame.
+
+    Parameters:
+    - df (pandas.DataFrame): The input DataFrame where rows represent trials.
+    - N (int): The number of trials to subsample.
+    - return_indices (bool): If True, also return the indices of the selected rows.
+
+    Returns:
+    - If return_indices is False, returns the subsampled DataFrame (pandas.DataFrame).
+    - If return_indices is True, returns a tuple (subsampled_df, indices).
+    """
+    # Check if DataFrame has more than N trials (rows)
+    if df.shape[0] < N:
+        raise ValueError(f"Input DataFrame must have more than {N} trials (rows).")
+    
+    # Randomly sample N rows from the DataFrame
+    subsampled_df = df.sample(n=N, random_state=42)
+    
+    # Return subsampled DataFrame and optionally the indices
+    if return_indices:
+        return subsampled_df.reset_index(drop=True), subsampled_df.index.to_numpy()  # Return indices as NumPy array
+    else:
+        return subsampled_df.reset_index(drop=True)
