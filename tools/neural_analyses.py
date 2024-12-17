@@ -7,9 +7,13 @@ Module to perform neural analyses
 import itertools
 import pandas as pd
 import numpy as np
+from tools.general import *
 from scipy.linalg import svd
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.preprocessing import StandardScaler
+from sklearn.naive_bayes import GaussianNB
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+from sklearn.model_selection import KFold
 
 
 def get_condition_axes(spike_count, labels, axis_method='PCA'):
@@ -209,6 +213,158 @@ def bin_spike_counts(X, bin_size):
     return binned_X
 
     
+
+def behavior_decoder(neural_data, behavior_labels, train_window=None, bin_size=20, classifier='lda', train_labels=None, cv_folds=2, subsample_flag = False):
+    """
+    Decode behavior labels from neural data using either a Naive Bayes or LDA classifier with manual cross-validation.
+    If `train_window` is provided, the classifier is trained on this window, and tested on each time bin.
+    If `train_window` is not provided, the classifier is trained on each time bin and tested on the same bin.
+
+    Parameters:
+    neural_data (numpy.ndarray): Neural data of shape (num_trials, num_neurons, num_timepoints).
+    behavior_labels (list or numpy.ndarray): Behavior labels of length num_trials (e.g., angles), used for testing.
+    train_window (tuple, optional): A tuple (start, end) specifying the time window (in number of timepoints) for training.
+    bin_size (int): Size of the time bin to decode the behavior in (in number of timepoints).
+    classifier (str): Choose between 'naive_bayes' or 'lda'. Defaults to 'lda'.
+    train_labels (list or numpy.ndarray, optional): Labels to use for training the classifier. If None, behavior_labels are used for training.
+    cv_folds (int): Number of folds for cross-validation. Defaults to 5.
+    subsample_flag(boolean): Subsample to ensure equal number of items in each class before training/testing decoder
     
+    Returns:
+    List of mean accuracies for each time bin across cross-validation folds.
+    """
+    
+    # Get the number of trials, neurons, and timepoints
+    num_trials, num_neurons, num_timepoints = neural_data.shape
+    
+    # If train_labels is not provided, use behavior_labels for training
+    if train_labels is None:
+        train_labels = behavior_labels
+    
+    # Check if the number of behavior labels matches the number of trials
+    if len(behavior_labels) != num_trials:
+        raise ValueError("The number of behavior labels must match the number of trials in the neural data.")
+    if len(train_labels) != num_trials:
+        raise ValueError("The number of train_labels must match the number of trials in the neural data.")
+    
+    # Normalize the neural data (standardization) for all timepoints (needed if we train separately on each bin)
+    scaler = StandardScaler()
+
+    # Initialize list to store accuracies for each time bin
+    decoding_accuracies = []
+    
+    # Create bins for testing
+    num_bins = num_timepoints // bin_size  # number of bins of size `bin_size`
+
+    # Loop over each bin
+    for bin_idx in range(num_bins):
+        # Define the start and end index for this bin
+        start_idx = bin_idx * bin_size
+        end_idx = (bin_idx + 1) * bin_size
+        
+        # If a train_window is specified, train on that window
+        if train_window:
+            train_start, train_end = train_window
+            if train_start < 0 or train_end >= num_timepoints or train_start >= train_end:
+                raise ValueError("The specified train_window exceeds the range of timepoints in the data.")
+            # Extract the training data within the train_window
+            train_data = neural_data[:, :, train_start:train_end+1]  # Shape: (num_trials, num_neurons, window_size)
+            train_data_reshaped = train_data.mean(axis=2)  # Average across time within the window (Shape: (num_trials, num_neurons))
+        else:
+            # If train_window is not specified, train and test separately on the current bin
+            train_data = neural_data[:, :, start_idx:end_idx]  # Data for current time bin
+            train_data_reshaped = train_data.mean(axis=2)  # Average across time within the bin (Shape: (num_trials, num_neurons))
+        
+        # Normalize the training data
+        train_data_scaled = scaler.fit_transform(train_data_reshaped)
+        
+        # Extract the population activity in the current time bin (for testing)
+        test_data = neural_data[:, :, start_idx:end_idx].mean(axis=2)  # Shape: (num_trials, num_neurons)
+        # Normalize the test data (using the same scaler as for training)
+        test_data_scaled = scaler.transform(test_data)
+        # Choose the classifier based on the `classifier` argument
+        if classifier == 'naive_bayes':
+            clf = GaussianNB()
+        elif classifier == 'lda':
+            clf = LDA()
+        else:
+            raise ValueError("Invalid classifier specified. Choose 'naive_bayes' or 'lda'.")
+        
+        # Initialize the KFold cross-validator
+        kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
+        
+        # List to store the accuracy for each fold
+        fold_accuracies = []
+        
+        # Perform manual cross-validation
+        for train_idx, test_idx in kf.split(train_data_scaled):
+            # Split the data into train and test folds
+            X_train, X_test = train_data_scaled[train_idx], test_data_scaled[test_idx]
+            y_train, y_test = train_labels[train_idx], behavior_labels[test_idx]
+            
+            if(subsample_flag):
+                X_train,y_train = subsample_balance_classes(X_train,y_train)
+            
+            # Train the classifier on the training fold
+            clf.fit(X_train, y_train)
+            
+            if(subsample_flag):
+                X_test,y_test = subsample_balance_classes(X_test,y_test)
+                
+            # Test the classifier on the test fold
+            test_accuracy = clf.score(X_test, y_test)
+            fold_accuracies.append(test_accuracy)
+            
+        # Calculate the mean accuracy across folds for this bin
+        mean_fold_accuracy = np.mean(fold_accuracies)
+        
+        # Store the mean accuracy for this bin
+        decoding_accuracies.append(mean_fold_accuracy)
+    
+    return decoding_accuracies
+
+def decode_by_sess(df_behav_date, neural_data, subselect_conditions, train_condition, test_condition, bin_size, train_window=None, subsample_flag=True, all_split_conditions=None):
+    
+    """
+    Decode the session data based on behavioral and neural data.
+
+    Parameters:
+    - df_behav_date: DataFrame containing the behavior data for a particular session.
+    - neural_data: Neural data for a particular session.
+    - subselect_conditions: Conditions for subsetting trials.
+    - train_condition: Condition used to train decoder 
+    - test_condition: Condition used to test decoder
+    - bin_size: Size of the bin for decoding.
+    - train_window: The training window for decoding.
+    - subsample_flag: Whether or not to subsample the data.
+    - all_split_conditions: Dict with all the sets of conditions being compared. 
+                            If not None, then the number of trials is matched across split conditions  
+                            
+    Returns:
+    - acc_sess: Accuracy for the current session.
+    """
+    
+    # Get min number of trials for each split condition
+    if(all_split_conditions):
+        num_trials_split=[]
+        for split_condition in all_split_conditions.keys():
+            _, idx_subselect = subselect_trials_idx(df_behav_date,all_split_conditions[split_condition],return_indices=True)
+            num_trials_split.append(len(idx_subselect))
+        min_trials = np.min(num_trials_split)
+    
+    # Subselect trials to use for decoding
+    if(subselect_conditions):
+        df_behav_date, idx_subselect = subselect_trials_idx(df_behav_date,subselect_conditions,return_indices=True)
+        neural_data = neural_data[idx_subselect]
+    
+    # Match number of trials across splits if 'all_split_conditions' was passed
+    if(all_split_conditions):
+        df_behav_date, idx_match = subsample_trials_df(df_behav_date,min_trials,return_indices=True)
+        neural_data = neural_data[idx_match]
+        print(min_trials)
+    acc_sess = behavior_decoder(neural_data, df_behav_date[test_condition], bin_size=bin_size, train_window=train_window, train_labels = df_behav_date[train_condition], subsample_flag = subsample_flag)
+    
+    return acc_sess
+
 
 
