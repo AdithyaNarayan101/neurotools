@@ -29,7 +29,7 @@ def load_concat_subject_data(subject,all_dates,data_path,filename='behav',data_t
         try:
             if(data_type=='csv'):
                 df.append(pd.read_csv(data_path+'df_'+filename+'_'+date+'.csv'))
-
+                
             elif(data_type=='pkl'):
                 with open(data_path+'df_'+filename+'_'+date+'.pkl', 'rb') as f:
                     df.append(pickle.load(f))
@@ -78,9 +78,12 @@ def get_experiment_file(data_path, subject='Sa', task='peripheralFocus', date='2
         if(all(i.lower() in item.lower() for i in query)):
             experiment_files.append(item)
 
-    assert len(experiment_files)==1
-    
-    return experiment_files[0]
+    if len(experiment_files)!=1:
+        print(experiment_files)
+        num = int(input("choose the file you want to load (idx starts from 0)"))
+    else:
+        num=0
+    return experiment_files[(num)]
 
 
 ## Functions needed to load mat files into python
