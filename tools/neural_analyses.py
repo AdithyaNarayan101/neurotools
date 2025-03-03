@@ -7,6 +7,8 @@ Module to perform neural analyses
 import itertools
 import pandas as pd
 import numpy as np
+import scipy as sp
+import scipy.stats as stats
 from tools.general import *
 from scipy.linalg import svd
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
@@ -16,6 +18,15 @@ from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.model_selection import KFold
 
 
+def remove_bad_units(spike_count, cutoff):
+    
+    FR = np.mean(np.sum(spike_count,2)/np.shape(spike_count)[2],0)*1000
+    
+    good_FR_units = FR>cutoff
+    
+    return spike_count[:,good_FR_units,:]
+    
+    
 def get_condition_axes(spike_count, labels, axis_method='PCA'):
     '''
     Wrapper function to compute the 'condition' axes for dimensionality reduction or classification.
@@ -45,15 +56,51 @@ def get_condition_axes(spike_count, labels, axis_method='PCA'):
         
         # Compute the top N principal components (axes) using PCA
         condition_axes = compute_PCA_axes(mean_spike_count, N)
-    
+        
     elif axis_method == 'LDA':
         # If LDA is chosen for maximizing class separability:
         
         # Compute the top N Linear Discriminant Axes using LDA
         condition_axes = compute_LDA_axes(spike_count, labels, N=N)
-    
+   
+    elif axis_method == 'delta_mean':
+        # If delta_mean is chosen for dimensionality reduction:
+        
+        # Compute the mean spike count for each condition (class)
+        mean_spike_count = compute_mean_spike_count(spike_count, labels)
+        
+        # Compute the axis connecting the mean of the first and last labels
+        condition_axes=np.zeros((np.shape(mean_spike_count)[1],1))
+        condition_axes[:,0] = np.transpose(mean_spike_count[-1,:] - mean_spike_count[0,:])
+        
+    elif axis_method == 'all_ones':
+        
+        condition_axes=np.ones((np.shape(spike_count)[1],1))
+        
     # Step 3: Return the computed axes (PCA or LDA)
     return condition_axes
+
+
+def test_spike_counts_anova(spike_count, labels):
+    num_trials, num_channels = spike_count.shape
+    p_values = []
+
+    # Perform ANOVA for each channel
+    for channel in range(num_channels):
+        # Extract the spike counts for the current channel
+        spike_counts_for_channel = spike_count[:, channel]
+
+        # Group the spike counts by the labels (conditions)
+        grouped_data = [spike_counts_for_channel[labels == label] for label in np.unique(labels)]
+        
+        # Perform one-way ANOVA
+        f_stat, p_value = stats.f_oneway(*grouped_data)
+        
+        # Append the p-value for this channel
+        p_values.append(p_value)
+
+    return np.array(p_values)
+
 
 
 def compute_mean_spike_count(spike_count, labels):
@@ -63,6 +110,7 @@ def compute_mean_spike_count(spike_count, labels):
     Parameters:
     - spike_count: 2D NumPy array of shape (num_trials x num_channels), where each element represents the spike count for a given trial and channel.
     - labels: 1D NumPy array of shape (num_trials,), where each element is the label corresponding to the condition of each trial.
+    - return_stats: If True, perform 
 
     Returns:
     - mean_spike_count: 2D NumPy array of shape (num_conditions x num_channels), where each element represents the mean spike count for a given condition and channel.
@@ -81,7 +129,8 @@ def compute_mean_spike_count(spike_count, labels):
         
         # Compute the mean spike count for each channel in the current condition
         mean_spike_count[i, :] = np.mean(spike_count[condition_trials, :], axis=0)
-    
+        
+        
     return mean_spike_count
 
 
@@ -113,6 +162,7 @@ def compute_PCA_axes(X, N=1):
     return top_n_components
 
 
+    
 
 def compute_LDA_axes(X, labels, N=1):
     """
@@ -291,7 +341,7 @@ def behavior_decoder(neural_data, behavior_labels, train_window=None, bin_size=2
             raise ValueError("Invalid classifier specified. Choose 'naive_bayes' or 'lda'.")
         
         # Initialize the KFold cross-validator
-        kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
+        kf = KFold(n_splits=cv_folds, shuffle=True, random_state=420)
         
         # List to store the accuracy for each fold
         fold_accuracies = []
@@ -304,7 +354,6 @@ def behavior_decoder(neural_data, behavior_labels, train_window=None, bin_size=2
             
             if(subsample_flag):
                 X_train,y_train = subsample_balance_classes(X_train,y_train)
-            
             # Train the classifier on the training fold
             clf.fit(X_train, y_train)
             
@@ -361,10 +410,66 @@ def decode_by_sess(df_behav_date, neural_data, subselect_conditions, train_condi
     if(all_split_conditions):
         df_behav_date, idx_match = subsample_trials_df(df_behav_date,min_trials,return_indices=True)
         neural_data = neural_data[idx_match]
-        print(min_trials)
+#         print(min_trials)
+        
     acc_sess = behavior_decoder(neural_data, df_behav_date[test_condition], bin_size=bin_size, train_window=train_window, train_labels = df_behav_date[train_condition], subsample_flag = subsample_flag)
     
     return acc_sess
+
+def ring_plot_by_sess(df_behav_date, neural_data, subselect_conditions_train, subselect_conditions_test, train_condition, test_condition, train_window=[700,1000],test_window=[700,1000]):
+    
+    """
+    Compute projections onto top 2 dimensions for the session data based on behavioral and neural data.
+
+    Parameters:
+    - df_behav_date: DataFrame containing the behavior data for a particular session.
+    - neural_data: Neural data for a particular session.
+    - subselect_conditions_train/test: Conditions for subsetting trials.
+    - train_condition: Condition used to find space
+    - test_condition: Condition used to project
+    - train_window: The training window for finding the subspace.
+    - test_window: The testing window for projecting data.
+                            
+    Returns:
+    - projections: Accuracy for the current session.
+    """
+    
+    # Subselect trials to use for finding the axes
+    df_behav_date_train, idx_subselect = subselect_trials_idx(df_behav_date,subselect_conditions_train,return_indices=True)
+    train_data = neural_data[idx_subselect]
+    
+    # Subselect trials to use for projecting onto the axes
+    df_behav_date_test, idx_subselect = subselect_trials_idx(df_behav_date,subselect_conditions_test,return_indices=True)
+    test_data = neural_data[idx_subselect]
+    
+    # Bin the training spike counts within the specified time window (e.g., [750, 1000] ms)
+    spike_count_bin = np.nanmean(train_data[:,:,train_window[0]:train_window[1]], 2)  # Mean across time window
+    mean_spike_count_bin = np.mean(spike_count_bin,0)
+    train_labels=df_behav_date_train[train_condition]
+    
+    # Get the condition axis based on the selected axis method (e.g., LDA, PCA, etc.)
+    cond_axis = get_condition_axes(spike_count_bin, train_labels, axis_method='PCA')
+#     cond_axis=cond_axis/np.linalg.norm(cond_axis)
+    
+    # Project the test data onto the condition axis
+    spike_count_test_bin = np.nanmean(test_data[:,:,test_window[0]:test_window[1]], 2)  # Mean across time window
+    test_labels=df_behav_date_test[test_condition]
+    
+    proj_data = project_on_axis((spike_count_test_bin)-mean_spike_count_bin, np.transpose(cond_axis[:, :2]))
+    
+    # Get all unique labels for the test data
+    all_test_labels = np.unique(test_labels)
+    
+    # Loop through each unique label in the test labels
+    proj_data_for_condition=[]
+    for i in all_test_labels:
+        # For each condition (label), get the corresponding projected data
+        proj_data_for_condition.append(np.nanmean(proj_data[test_labels == i,:],0) * (1000 ))  # Convert to spikes per second
+        
+    proj_data_for_condition.append(proj_data_for_condition[0])
+    
+
+    return proj_data_for_condition
 
 
 
