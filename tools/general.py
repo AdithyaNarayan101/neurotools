@@ -8,6 +8,14 @@ import numpy as np
 import itertools
 import scipy.signal as signal
 
+def convert_to_0_to_360(theta_list):
+    # Convert each angle in the list
+    return [theta + 360 if theta < 0 else theta for theta in theta_list]
+def np_sind(degrees):
+    return np.sin(np.radians(degrees))
+
+def np_cosd(degrees):
+    return np.cos(np.radians(degrees))
 
 def standard_error(x):
     return x.std() / (len(x) ** 0.5)
@@ -265,3 +273,28 @@ def subsample_trials_df(df, N, return_indices=False):
         return subsampled_df.reset_index(drop=True), subsampled_df.index.to_numpy()  # Return indices as NumPy array
     else:
         return subsampled_df.reset_index(drop=True)
+    
+def index_blocks(sequence):
+    indexed_sequence = []
+    current_value = sequence[0]  # Start with the first value in the sequence
+    block_num = 1  # Start with block 1
+
+    # Iterate through the sequence and index blocks of 1's and 2's
+    i = 0
+    while i < len(sequence):
+        block = []
+        
+        # Collect the current block of identical numbers (1 or 2)
+        while i < len(sequence) and sequence[i] == current_value:
+            block.append(block_num)  # Assign the block number
+            i += 1
+
+        indexed_sequence.extend(block)  # Add the indexed block to the sequence
+        block_num += 1  # Increment block number for the next block
+
+        # Alternate the current value between 1 and 2
+        current_value = 2 if current_value == 1 else 1
+
+    return indexed_sequence
+
+
