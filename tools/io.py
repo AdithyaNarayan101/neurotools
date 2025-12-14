@@ -60,7 +60,7 @@ def load_trial_codes(trial_codes_path):
     return struct,arr_out
 
 
-def get_experiment_file(data_path, subject='Sa', task='peripheralFocus', date='2222222',area='M1'):
+def get_experiment_file(data_path, subject='Sa', task='peripheralFocus', date='2222222',area='M1',file_idx=-1):
 
     '''
     Find the file in the data_path that matches the query(subject,task,area,date)
@@ -77,10 +77,13 @@ def get_experiment_file(data_path, subject='Sa', task='peripheralFocus', date='2
              continue
         if(all(i.lower() in item.lower() for i in query)):
             experiment_files.append(item)
-
+    
     if len(experiment_files)!=1:
         print(experiment_files)
-        num = int(input("choose the file you want to load (idx starts from 0)"))
+        if(file_idx==-1):
+            num = int(input("choose the file you want to load (idx starts from 0)"))
+        else:
+            num = file_idx
     else:
         num=0
     return experiment_files[(num)]
@@ -309,14 +312,14 @@ def load_mat73(file_path):
     return dat
 
 
-def load_session_dat(data_path,subject='Sa',area='M1',task='Focus',date='0000'):
+def load_session_dat(data_path,subject='Sa',area='M1',task='Focus',date='0000',file_idx=0):
     
     '''
     Calls get_experiment_files to get the appropriate session path + file name. Then calls load_mat_file
 
     '''
-    session_file = get_experiment_file(data_path,subject=subject,area=area,task=task,date=date)
-
+    session_file = get_experiment_file(data_path,subject=subject,area=area,task=task,date=date, file_idx=file_idx)
+    
     try:
         dat = load_mat73(data_path+session_file)
     except:
