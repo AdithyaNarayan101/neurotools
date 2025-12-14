@@ -8,6 +8,33 @@ import numpy as np
 import itertools
 import scipy.signal as signal
 
+def create_3d_array(arrays):
+    # Find the max t (number of columns) across all 2D arrays
+    max_t = max(arr.shape[1] for arr in arrays)
+    
+    # Initialize a 3D array of shape (N, max_t) filled with NaN
+    # Assuming all arrays have the same number of rows (N)
+    N = arrays[0].shape[0]
+    result = np.full((len(arrays), N, max_t), np.nan)
+    
+    # Fill the 3D array with values from the original arrays
+    for i, arr in enumerate(arrays):
+        result[i, :, :arr.shape[1]] = arr
+        
+    return result
+
+
+def smooth(data, window_size=35):
+        window = np.ones(window_size) / window_size
+
+        if data.ndim == 1:
+            return np.convolve(data, window, mode='same')
+        elif data.ndim == 2:
+            return np.array([np.convolve(row, window, mode='same') for row in data])
+        else:
+            raise ValueError("Input data must be 1D or 2D")
+            
+           
 def convert_to_0_to_360(theta_list):
     # Convert each angle in the list
     return [theta + 360 if theta < 0 else theta for theta in theta_list]
@@ -276,15 +303,14 @@ def subsample_trials_df(df, N, return_indices=False):
     
 def index_blocks(sequence):
     indexed_sequence = []
-    current_value = sequence[0]  # Start with the first value in the sequence
-    block_num = 1  # Start with block 1
-
-    # Iterate through the sequence and index blocks of 1's and 2's
+    
+    block_num = sequence[0]  # Start with block 1 if Hard, 2 if Easy, 3 if Trivial
     i = 0
     while i < len(sequence):
         block = []
+        current_value = sequence[i]
         
-        # Collect the current block of identical numbers (1 or 2)
+        # Collect the current block of identical numbers
         while i < len(sequence) and sequence[i] == current_value:
             block.append(block_num)  # Assign the block number
             i += 1
@@ -292,9 +318,7 @@ def index_blocks(sequence):
         indexed_sequence.extend(block)  # Add the indexed block to the sequence
         block_num += 1  # Increment block number for the next block
 
-        # Alternate the current value between 1 and 2
-        current_value = 2 if current_value == 1 else 1
-
     return indexed_sequence
+
 
 
