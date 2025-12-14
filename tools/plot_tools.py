@@ -15,7 +15,7 @@ from tools.general import *
 import plotly.colors
 import matplotlib.colors as mcolors
 from tools.neural_analyses import *
-
+from scipy.stats import zscore
 """
 Define color maps
 """
@@ -41,7 +41,26 @@ def generate_color_circle(start=0, end=360, step=5):
     return color_dict
 
 
-
+def generate_color_shades(color_name, num_shades=10):
+    # Ensure the color name is valid
+    if color_name not in mcolors.CSS4_COLORS:
+        raise ValueError(f"Color name '{color_name}' is not recognized. Please use a valid CSS color name.")
+    
+    # Get RGB values of the color name
+    base_color = mcolors.CSS4_COLORS[color_name]
+    rgb = np.array(mcolors.hex2color(base_color))  # Convert to RGB (normalized [0, 1] range)
+    
+    # Generate the shades by adjusting the brightness
+    shades = []
+    num_shades=num_shades+1
+    for i in range(1,num_shades):
+        # Adjust brightness: interpolate between 0 (dark) and 1 (light)
+        factor = 1- (i / (num_shades - 1))  # A value between 0 and 1
+        shade_rgb = rgb * (1 - factor) + factor  # Blend the base color with white (lightening)
+        hex_color = mcolors.rgb2hex(shade_rgb)  # Convert RGB back to hex
+        shades.append(hex_color)
+    
+    return shades
 def generate_color_list(num_colors, cmap_name = 'turbo', output_format = 'hex'):
     """
     Generate a list of colors using a specified colormap.
@@ -75,6 +94,26 @@ def generate_color_list(num_colors, cmap_name = 'turbo', output_format = 'hex'):
 Define plotting helper functions
 
 """
+def set_axis_ranges(fig, x_range=None, y_range=None):
+    """
+    Set the specified x and y ranges across all subplots of the given Plotly figure.
+
+    Parameters:
+    - fig: Plotly figure object.
+    - x_range: Tuple or list specifying the desired x-axis range [min, max].
+    - y_range: Tuple or list specifying the desired y-axis range [min, max].
+
+    Returns:
+    - fig: Updated Plotly figure with specified axis ranges applied.
+    """
+    # Apply the specified x-range and y-range to all x and y axes
+    for axis in fig.layout:
+        if axis.startswith('xaxis') and x_range is not None:
+            fig.update_layout({axis: {'range': x_range}})
+        elif axis.startswith('yaxis') and y_range is not None:
+            fig.update_layout({axis: {'range': y_range}})
+    
+    return fig
 def make_bg_white(fig, rows, cols):
     """
     Update a Plotly figure to have a white background and black axes.
@@ -121,7 +160,7 @@ def hex_to_rgba(hex_color, alpha=1.0):
 
 
   
-def stdshade(fig, data, x_values, error_type='sem', row=1, col=1, color='#FF5733', name="Mean with Shaded Error", xlabel="Time", ylabel="",legend_flag=False):
+def stdshade(fig, data, x_values, error_type='sem', row=1, col=1, color='#FF5733', name="Mean with Shaded Error", xlabel="Time", ylabel="",legend_flag=False, line_width=1,line_dash='solid'):
     """
     Plot the mean of a set of signals with a shaded region representing the error (standard deviation or standard error).
     Add the plot to a specific subplot in the existing figure.
@@ -151,13 +190,13 @@ def stdshade(fig, data, x_values, error_type='sem', row=1, col=1, color='#FF5733
     data_array = np.array(data)
     
     # Calculate the mean of the signals
-    mean_signal = np.mean(data_array, axis=0)
+    mean_signal = np.nanmean(data_array, axis=0)
     
     # Calculate the error (std or sem)
     if error_type == 'std':
-        error = np.std(data_array, axis=0)
+        error = np.nanstd(data_array, axis=0)
     elif error_type == 'sem':
-        error = np.std(data_array, axis=0) / np.sqrt(len(data))
+        error = np.nanstd(data_array, axis=0) / np.sqrt(len(data))
     else:
         raise ValueError("Error type must be 'std' or 'sem'.")
     color_rgba = hex_to_rgba(color,alpha=.4)
@@ -169,7 +208,7 @@ def stdshade(fig, data, x_values, error_type='sem', row=1, col=1, color='#FF5733
         mode='lines', 
         name=name, 
         legendgroup=name,
-        line=dict(color=color, width=1),
+        line=dict(color=color, width=line_width,dash=line_dash),
         showlegend=legend_flag
     ), row=row, col=col)
     # Add shaded error region in the specified subplot
@@ -180,6 +219,7 @@ def stdshade(fig, data, x_values, error_type='sem', row=1, col=1, color='#FF5733
         fillcolor=color_rgba,  # Using the color with transparency for the shaded region
         line=dict(color=color_rgba_white),  # No border for the shaded region
         name='Error Region',
+        legendgroup=name,
         showlegend=False
     ), row=row, col=col)
     
@@ -379,7 +419,7 @@ def plot_reach_by_condition(fig, data,   conditions, x_label, metric = 'Velocity
             vel_profile = np.mean([filtered_df['Velocity Profile'][i][int((filtered_df[event_to_time_lock][i]+window[0])*fs/1000):int((filtered_df[event_to_time_lock][i]+window[1])*fs/1000)] for i in range(len(filtered_df))],0)
             # Append results to the list
             results.append({**condition_dict, 'Value': vel_profile})
-        
+            
         elif(metric == 'Trajectory'):
             
             trajectories = ([filtered_df['Trajectory'][i][:,int((filtered_df[event_to_time_lock][i]+window[0])*fs/1000):int((filtered_df[event_to_time_lock][i]+window[1])*fs/1000)] for i in range(len(filtered_df))])
@@ -453,7 +493,7 @@ def plot_reach_by_condition(fig, data,   conditions, x_label, metric = 'Velocity
 
     
     
-def plot_PSTH_by_condition(fig, spike_count_train, train_labels, spike_count_test, test_labels, color_map, axis_method='LDA', train_window=[750, 1000], plot_bin_size=1, row_num=1, column_num=1, x_offset=-500, center_projections_flag=True,legend_flag=False):
+def plot_PSTH_by_condition(fig, spike_count_train, train_labels, spike_count_test, test_labels, color_map, axis_method='LDA', train_window=[750, 1000], plot_bin_size=1, row_num=1, column_num=1, x_offset=-500, center_projections_flag=True,legend_flag=False, line_width=1,line_dash='solid',smooth_flag=False,subtract_baseline_PSTH=False,baseline_label = 0, cumulative_sum_flag=False, zscore_flag=False, use_axis=None, return_proj=False):
     """
     Plots Peri-Stimulus Time Histogram (PSTH) by condition for test data projected onto a 'Condition Axis' based on the specified axis method and condition labels.
     
@@ -474,33 +514,68 @@ def plot_PSTH_by_condition(fig, spike_count_train, train_labels, spike_count_tes
     # Bin the training spike counts within the specified time window (e.g., [750, 1000] ms)
     spike_count_bin = np.nanmean(spike_count_train[:,:,train_window[0]:train_window[1]], 2)  # Mean across time window
     
-    # Get the condition axis based on the selected axis method (e.g., LDA, PCA, etc.)
-    cond_axis = get_condition_axes(spike_count_bin, train_labels, axis_method=axis_method)
+    if(zscore_flag):
+        spike_count_bin=zscore(spike_count_bin,axis=0)
     
+    if(use_axis is None):
+        # Get the condition axis based on the selected axis method (e.g., LDA, PCA, etc.)
+        cond_axis = get_condition_axes(spike_count_bin, train_labels, axis_method=axis_method)
+    else:
+        cond_axis=use_axis
+        
     # Bin the test spike counts using the specified bin size
-    spikes_binned = bin_spike_counts(spike_count_test, bin_size=plot_bin_size)
+    if(smooth_flag==False):
+        spikes_binned = bin_spike_counts(spike_count_test, bin_size=plot_bin_size)
+         # Define the x-values for plotting based on the bin size and number of time points
+        x_values = (np.arange(0, np.shape(spikes_binned)[2]) * plot_bin_size + (plot_bin_size / 2)) +x_offset
     
+    else:
+        spikes_binned = bin_spike_counts(spike_count_test, bin_size=1) # Bin size =1 if smoothing 
+         # Define the x-values for plotting based on the bin size and number of time points
+        x_values = (np.arange(0, np.shape(spikes_binned)[2]) * 1 + (1 / 2)) +x_offset
+    
+    if(zscore_flag):
+        spikes_binned=zscore(spikes_binned,axis=0)
+        
     # Project the binned test data onto the condition axis
     proj_data = project_on_axis(np.transpose(spikes_binned, [2, 0, 1]), cond_axis[:, 0]/np.linalg.norm(cond_axis[:, 0]),center_projections=center_projections_flag)
     
-    # Define the x-values for plotting based on the bin size and number of time points
-    x_values = (np.arange(0, np.shape(spikes_binned)[2]) * plot_bin_size + (plot_bin_size / 2)) +x_offset
     
+   
     # Get all unique labels for the test data
     all_test_labels = np.unique(test_labels)
     
     # Loop through each unique label in the test labels
     for i in all_test_labels:
         # For each condition (label), get the corresponding projected data
-        proj_data_for_condition = (proj_data[:, test_labels == i].T) * (1000 / plot_bin_size)  # Convert to spikes per second
+        proj_data_for_condition = (proj_data[:, test_labels == i].T) * (1 / plot_bin_size)  # Convert to spikes per second
         
+        if(subtract_baseline_PSTH): # Used currently for subtracting no-change psth for V4:  
+            proj_data_baseline = (proj_data[:, test_labels == baseline_label].T) * (1 / plot_bin_size)
+            if(cumulative_sum_flag==True):
+                proj_data_for_condition=np.cumsum(proj_data_for_condition-np.nanmean(proj_data_baseline,0),axis=1)
+            else:
+                proj_data_for_condition=(proj_data_for_condition-np.nanmean(proj_data_baseline,0))
+
+        if(smooth_flag==True):
+            proj_data_for_condition = smooth((proj_data[:, test_labels == i].T) *1000,plot_bin_size)  # Smooth + Convert to spikes per second
+            if(subtract_baseline_PSTH):
+                proj_data_baseline = smooth((proj_data[:, test_labels == baseline_label].T) *1000,plot_bin_size)
+                if(cumulative_sum_flag==True):
+                    proj_data_for_condition=np.cumsum(proj_data_for_condition-np.nanmean(proj_data_baseline,0),axis=1)
+                else:
+                    proj_data_for_condition=(proj_data_for_condition-np.nanmean(proj_data_baseline,0))
+                
         # Plot the data for this label using the stdshade function (which handles shaded error bars)
         stdshade(fig, proj_data_for_condition, x_values=x_values, row=row_num, col=column_num, 
-                 color=color_map[i], name=str(i),legend_flag=legend_flag)
+                 color=color_map[i], name=str(i),legend_flag=legend_flag,line_width=line_width,line_dash=line_dash)
         
-    return cond_axis[:, 0]
+    if (return_proj):
+        return cond_axis[:,0], proj_data
+    else:
+        return cond_axis[:, 0]
 
-def make_decoding_figure(fig, df_behav, spikes, all_dates, subject_name, train_condition , test_condition, train_window=None, test_window=[0,1400], bin_size=50, subselect_conditions={}, subsample_flag=True, line_color='black', plot_individual_sessions=False, legend_label='', all_split_conditions = None):
+def make_decoding_figure(fig, df_behav, spikes, all_dates, subject_name, train_condition , test_condition, train_window=None, test_window=[0,1400], bin_size=50, subselect_conditions={}, subsample_flag=True, line_color='black', plot_individual_sessions=False, legend_label='', all_split_conditions = None,x_offset=-500):
     """
     Generate decoding figure based on the provided parameters.
 
@@ -522,24 +597,88 @@ def make_decoding_figure(fig, df_behav, spikes, all_dates, subject_name, train_c
     - legend_label : Label to be used in the legend 
     """
     accuracies=[]
+    color_scale_sess=hue_rotate_scale(line_color,len(all_dates))
+    i_sess=-1
     for date in all_dates:
-        
+        i_sess=i_sess+1
         df_behav_date = df_behav[df_behav['Session Name']==date].reset_index(drop=True)
         neural_data = spikes[subject_name][date]
         neural_data = neural_data[:,:,test_window[0]:test_window[1]]
         accuracies.append(decode_by_sess(df_behav_date, neural_data, subselect_conditions, train_condition, test_condition, bin_size, train_window, subsample_flag, all_split_conditions))
         
         if(plot_individual_sessions):
-            fig.add_trace(go.Scatter(showlegend=True, line=dict(width=.5),mode='lines',marker_color=line_color,x=-500+np.arange(len(accuracies[-1]))*bin_size + (bin_size/2), y=accuracies[-1]))
+            fig.add_trace(go.Scatter(showlegend=True, line=dict(width=2),mode='lines',marker_color=line_color,x=x_offset+np.arange(len(accuracies[-1]))*bin_size + (bin_size/2), y=accuracies[-1]))
     
-    fig.add_trace(go.Scatter(name=legend_label,legendgroup = legend_label, line=dict(width=4), marker_color=line_color,x=-500+test_window[0]+np.arange(len(accuracies[0]))*bin_size + (bin_size/2), y=np.nanmean(accuracies,0), error_y=dict(array = np.std(accuracies,0)/np.sqrt(len(all_dates)))))
+    fig.add_trace(go.Scatter(name=legend_label,legendgroup = legend_label, line=dict(width=4), marker_color=line_color,x=x_offset+test_window[0]+np.arange(len(accuracies[0]))*bin_size + (bin_size/2), y=np.nanmean(accuracies,0), error_y=dict(array = np.std(accuracies,0)/np.sqrt(len(all_dates)))))
     
     fig['layout']['title'] = subject_name 
     fig['layout']['yaxis']['title'] = 'Decoding accuracy'
     fig['layout']['xaxis']['title'] = 'Time from Target Onset (ms)' 
-
     
-def make_ring_plots(fig, df_behav, spikes, all_dates, subject_name, train_condition , test_condition, train_window=[700,1000], test_window=[700,1000], subselect_conditions_train={}, subselect_conditions_test={}, line_color='black', plot_individual_sessions=False, legend_label='',row_num=1,col_num=1):
+import plotly.colors as pc
+import colorsys
+
+def make_darker_scale(base_color, n=5):
+    r, g, b = mcolors.to_rgb(base_color) 
+    colors = [mcolors.to_hex((r*(1 - i/n), g*(1 - i/n), b*(1 - i/n)))
+              for i in range(n)]
+    return colors
+
+def hue_rotate_scale(base_color, n=5, total_degrees=60):
+    """Generate a scale by rotating hue around the color wheel."""
+    # convert base color to HLS (Hue, Lightness, Saturation)
+    r, g, b = mcolors.to_rgb(base_color)
+    h, l, s = colorsys.rgb_to_hls(r, g, b)
+
+    colors = []
+    for i in range(n):
+        # rotate hue by fraction of total_degrees
+        new_h = (h - (total_degrees / 360) * (i / (n ))) % 1.0
+        new_r, new_g, new_b = colorsys.hls_to_rgb(new_h, l, s)
+        colors.append(mcolors.to_hex((new_r, new_g, new_b)))
+
+    return colors
+def make_decoding_figure_single_bin(fig, df_behav, spikes, all_dates, subject_name, train_condition , test_condition, train_window=None, test_window=[500,1000],bin_size=500, subselect_conditions={}, subsample_flag=True, line_color='black', plot_individual_sessions=False, legend_label='', all_split_conditions = None,x_label=['Target']):
+    """
+    Generate decoding figure based on the provided parameters.
+
+    Parameters:
+    - fig : plotly figure 
+    - df_behav: DataFrame containing the behavioral data.
+    - spikes: Dictionary containing spike data for each subject and date.
+    - all_dates: List of all dates for the sessions.
+    - subject_name: Name of the subject (e.g., 'Pumbaa').
+    - test_window: Time window for testing (e.g., [0, 1400]).
+    - train_condition: Condition used to train decoder 
+    - test_condition: Condition used to test decoder
+    - train_window: Time window for training (None if train/test on each bin, or specify start/end e.g. [750,1000])
+    - subselect_conditions: Conditions for subsetting trials.
+    - subsample_flag: Whether or not to subsample the data.
+    - line_color: Color of the lines in the plot.
+    - plot_individual_sessions: Whether to plot individual session results.
+    - legend_label : Label to be used in the legend 
+    """
+    color_scale_sess=make_darker_scale(line_color,len(all_dates))
+    accuracies=[]
+    i_sess=-1
+    for date in all_dates:
+        i_sess=i_sess+1
+        df_behav_date = df_behav[df_behav['Session Name']==date].reset_index(drop=True)
+        neural_data = spikes[subject_name][date]
+        neural_data = neural_data[:,:,test_window[0]:test_window[1]]
+        accuracies_session=(decode_by_sess(df_behav_date, neural_data, subselect_conditions, train_condition, test_condition, bin_size, train_window, subsample_flag, all_split_conditions))
+        accuracies.append([np.max(accuracies_session)])
+        
+        if(plot_individual_sessions):
+            fig.add_trace(go.Scatter(showlegend=True,mode='markers',marker_color=color_scale_sess[i_sess],x=x_label, y=accuracies[-1]))
+    
+    fig.add_trace(go.Bar(name=legend_label,legendgroup = legend_label,marker=dict(opacity=0.5), marker_color=line_color,x=x_label, y=np.nanmean(accuracies,0), error_y=dict(array = np.std(accuracies,0)/np.sqrt(len(all_dates)))))
+    
+    fig['layout']['title'] = subject_name 
+    fig['layout']['yaxis']['title'] = 'Decoding accuracy'
+    
+        
+def make_ring_plots(fig, df_behav, spikes, all_dates, subject_name, train_condition , test_condition, train_window=[700,1000], test_window=[700,1000], subselect_conditions_train={}, subselect_conditions_test={}, line_color='black', plot_individual_sessions=False, legend_label='',row_num=1,col_num=1,marker_colors=['orange', 'green', 'blue', 'magenta'],line_width=4,line_dash='solid', use_axis=False,special_axis=None, return_space=False, remove_bad_units_flag=True,axis_method="PCA"):
     """
     Generate figure with ring plots (projection onto top 2 dimensions explaining related variance related to a circular variable) based on the provided parameters.
 
@@ -559,26 +698,42 @@ def make_ring_plots(fig, df_behav, spikes, all_dates, subject_name, train_condit
     - legend_label : Label to be used in the legend 
     """
     projections=[]
+    target_space=[]
     for date in all_dates:
         
         df_behav_date = df_behav[df_behav['Session Name']==date].reset_index(drop=True)
         neural_data = spikes[subject_name][date]
-        neural_data_good_units = remove_bad_units(neural_data,1)
+        if(remove_bad_units_flag):
+            neural_data_good_units = remove_bad_units(neural_data,1)
+        else:
+            neural_data_good_units=neural_data
+            
 #         neural_data = neural_data[:,:,test_window[0]:test_window[1]]
-        projections.append(ring_plot_by_sess(df_behav_date, neural_data_good_units, subselect_conditions_train,subselect_conditions_test , train_condition, test_condition, train_window, test_window))
+        if(return_space):
+            proj, target_space_date =ring_plot_by_sess(df_behav_date, neural_data_good_units, subselect_conditions_train,subselect_conditions_test , train_condition, test_condition, train_window, test_window,use_axis=use_axis, special_axis=special_axis, return_space=return_space,axis_method=axis_method)
+            
+            projections.append(proj)
+            target_space.append(target_space_date)
+        
+        else:
+            
+            proj = ring_plot_by_sess(df_behav_date, neural_data_good_units, subselect_conditions_train,subselect_conditions_test , train_condition, test_condition, train_window, test_window,use_axis=use_axis, special_axis=special_axis, return_space=return_space,axis_method=axis_method)
+            projections.append(proj)
         
         if(plot_individual_sessions):
             fig.add_trace(go.Scatter(showlegend=True, line=dict(width=.5),marker_color=line_color,x=projections[-1][0], y=projections[-1][1]), row=row_num, col=col_num)
     
     projections=np.array(projections)
-    fig.add_trace(go.Scatter(name=legend_label,legendgroup = legend_label, line=dict(width=4), marker_color=line_color,x=np.nanmean(projections[:,:,0],0), y=np.nanmean(projections[:,:,1],0), error_y=dict(array = np.std(projections[:,1],0)/np.sqrt(len(all_dates))), error_x=dict(array = np.std(projections[:,0],0)/np.sqrt(len(all_dates)))), row=row_num, col=col_num)
+    
+    fig.add_trace(go.Scatter(name=legend_label,legendgroup = legend_label, line=dict(color=line_color,width=line_width,dash=line_dash) ,marker=dict(size=15,color=marker_colors), x=np.nanmean(projections[:,:,0],0), y=np.nanmean(projections[:,:,1],0), error_y=dict(array = np.std(projections[:,1],0)/np.sqrt(len(all_dates))), error_x=dict(array = np.std(projections[:,0],0)/np.sqrt(len(all_dates)))), row=row_num, col=col_num)
     
     
     fig['layout']['title'] = subject_name 
     fig['layout']['yaxis']['title'] = 'Dim. 2'
     fig['layout']['xaxis']['title'] = 'Dim. 1' 
 
-
+    if(return_space):
+        return target_space
 
 def plot_single_neuron_direction_tuning(fig, spike_count, direction_labels, color_map, window=[750, 1000], row_num=1, column_num=1, legend_flag=False):
     
