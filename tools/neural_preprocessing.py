@@ -94,7 +94,7 @@ def bin_spikes(dat, bin_size=.001, channels=list(range(64)), filter_spike_codes=
                 end_bin = np.floor((end_time - start_time) / bin_size).astype(int)
                 if 0 <= end_bin < num_bins:
                     binned_spikes[:, end_bin + 1:] = np.nan
-
+           
     elif align_type == 'end':
         # Get the end time for each trial
         end_time = (dat['trialcodes'][dat['trialcodes'][:, 1] == end_code, 2] + end_offset)
@@ -128,6 +128,103 @@ def bin_spikes(dat, bin_size=.001, channels=list(range(64)), filter_spike_codes=
 
     
     return binned_spikes
+
+
+
+# For stitched data
+def bin_stitched_data(trial_codes, activity_matrix, bin_size=1, align_type='start', start_code=70, start_offset=-500, end_code=11,
+               end_offset=1, total_length=2500, cutoff=False):
+    '''
+    Bin spikes (works for smith lab data)
+
+    Parameters: 
+        trial_codes : dict
+            
+        bin_size : float
+            Size of bin in ms (default = 1ms)
+        
+        align_type : str
+            'start' or 'end'. Specifies how to align bins (default = 'start')
+        start_code : int
+            Code for trial start event (default = 70)
+        start_offset : int
+            Offset in ms from start_code to use for binning (default = -500)
+        end_code : int
+            Code for trial end event (default = 11)
+        end_offset : int
+            Offset in ms from end_code to use for binning (default = 1000)
+        total_length : int
+            Total length for trial (default = 2500 ms)
+        cutoff : bool
+            If True, pad matrix with NaNs after start/end codes (default = False)
+       
+
+    Outputs:
+        binned_spikes : ndarray
+            Spike count matrix with shape (num_channels x num_bins)
+    '''
+    
+    
+    
+    # Initialize the binned_spikes matrix with rows corresponding to the channels in 'channels'
+    
+    num_latents, num_timepoints = activity_matrix.shape
+    # Align spikes to the start or end of trial
+    if align_type == 'start':
+        # Get the start time for each trial
+        start_time = (trial_codes[trial_codes[:, 1] == start_code, 2] - trial_codes[0, 2])*1000 + start_offset
+        
+        # Calculate the number of bins
+        num_bins = int(total_length // bin_size)
+        if total_length % bin_size != 0:
+            num_bins += 1  # Handle the case where there's a remainder
+
+        # Initialize an array to store binned data
+        binned_activity = np.zeros((num_latents, num_bins))
+        # Loop through each bin and compute the average activity across time points in that bin
+        for i in range(num_bins):
+            start_idx = int(i * bin_size + start_time)
+            end_idx = int(min((i + 1) * bin_size, num_timepoints) + start_time)
+
+            # Compute the mean across the timepoints in this bin
+            binned_activity[:, i] = np.mean(activity_matrix[:, start_idx:end_idx], axis=1)
+            
+        if cutoff:
+            # Set bins after end_code to NaN
+            end_times = (trial_codes[trial_codes[:, 1] == end_code, 2] - trial_codes[0, 2] )*1000 + end_offset
+            for end_time in end_times:
+                end_bin = np.floor((end_time - start_time) / bin_size).astype(int)
+                if 0 <= end_bin < num_bins:
+                    binned_activity[:, end_bin + 1:] = np.nan
+
+    elif align_type == 'end':
+        # Get the end time for each trial
+        end_time = (trial_codes[trial_codes[:, 1] == end_code, 2] - trial_codes[0,2])*1000 + end_offset
+        start_time = end_time-total_length
+        # Calculate the number of bins
+        num_bins = total_length // bin_size
+        if total_length % bin_size != 0:
+            num_bins += 1  # Handle the case where there's a remainder
+
+        # Initialize an array to store binned data
+        binned_activity = np.zeros((num_latents, num_bins))
+        # Loop through each bin and compute the average activity across time points in that bin
+        for i in range(num_bins):
+            start_idx = int(i * bin_size + start_time)
+            end_idx = int(min((i + 1) * bin_size, num_timepoints) + start_time)
+
+            # Compute the mean across the timepoints in this bin
+            binned_activity[:, i] = np.mean(activity_matrix[:, start_idx:end_idx], axis=1)
+
+        if cutoff:
+            # Set bins before start_code to NaN
+            start_times = (trial_codes[trial_codes[:, 1] == start_code, 2] - trial_codes[0,2])*1000 + start_offset
+            for start_time in start_times:
+                start_bin = np.floor((start_time - end_time) / bin_size).astype(int)
+                if 0 <= start_bin < num_bins:
+                    binned_activity[:, :start_bin] = np.nan
+        
+    return binned_activity
 
 
 
