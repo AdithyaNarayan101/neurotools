@@ -16,18 +16,107 @@ from sklearn.preprocessing import StandardScaler
 from sklearn.naive_bayes import GaussianNB
 from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
 from sklearn.model_selection import KFold
+from plotly.subplots import make_subplots
+import plotly.graph_objects as go
 
 
-def remove_bad_units(spike_count, cutoff):
+def remove_bad_units(spike_count, cutoff, return_good_units=False):
     
-    FR = np.mean(np.sum(spike_count,2)/np.shape(spike_count)[2],0)*1000
+    FR = np.nanmean(np.sum(spike_count,2)/np.shape(spike_count)[2],0)*1000
     
     good_FR_units = FR>cutoff
+    if return_good_units:
+        return spike_count[:,good_FR_units,:], good_FR_units
+    else:
+        return spike_count[:,good_FR_units,:]
     
-    return spike_count[:,good_FR_units,:]
+
+def compute_FR(spike_count, window):
+    # spike count: num_trials x num_channels x num_timepts
+    # window:
+            #  Option 1: [start, end] (in ms locked to target onset) 
+            #  Option 2: num_trials x 2; where each row is [start, end] - Used if window is variable w.r.t Target onset (e.g. locked to go-cue)
+            
+    # returns: FR_window (num_channels x 1)
+     
+    num_trials = spike_count.shape[0]
+    
+    if(window.shape == (2,)):
+        window = np.repeat(window[np.newaxis,:], num_trials, axis = 0)
     
     
-def get_condition_axes(spike_count, labels, axis_method='PCA'):
+    FR_window_trialwise = [np.sum(spike_count[i,:,window[i,0]:window[i,1]],-1)/(window[i,1]-window[i,0]) for i in range(num_trials)]
+    
+    FR_window = np.nanmean(np.array(FR_window_trialwise),0) # Mean across trials 
+    
+    FR_window = 1000*FR_window #  Convert to Hz
+    
+    return FR_window
+
+
+def quality_control_metrics(spike_count, window_baseline = [0,500], window_task = [500,1500], window_all = [0,2500], FR_cutoff=0.5, drift_cutoff=None, plot_figures=False):
+    
+    # Note (14 Dec 2025): Currently, Drift Cutoff is not implemented 
+    
+    # Baseline Firing Rate: 
+    FR_baseline = compute_FR(spike_count, window_baseline)
+
+    # Task Firing Rate: 
+    FR_task = compute_FR(spike_count, window_task)
+    
+    # Overall Firing Rate: 
+    FR_all = compute_FR(spike_count, window_all)
+    
+    
+    # session drift: (early vs late)
+    num_trials = spike_count.shape[0]
+    
+    spike_count_early = spike_count[:int(num_trials/4), :,:] # First 25 % of trials
+    spike_count_late = spike_count[int(3*num_trials/4):, :,:]# Last 25% of trials 
+    
+    FR_all_early = compute_FR(spike_count_early, window_all)
+    FR_all_late = compute_FR(spike_count_late, window_all)
+
+    FR_drift = (FR_all_early-FR_all_late) / (FR_all_late)
+    
+    # quality control metrics: 
+    
+    QC_metrics = pd.DataFrame({'FR_baseline':FR_baseline,'FR_baseline_cutoff':FR_baseline>FR_cutoff, 
+                  'FR_task':FR_task,'FR_task_cutoff':FR_task>FR_cutoff, 
+                  'FR_all':FR_all,'FR_all_cutoff':FR_all>FR_cutoff, 
+                  'FR_drift':FR_drift, 
+                  'FR_early':FR_all_early,'FR_late':FR_all_late})
+    
+    # Exclude all bad units: 
+    good_channels_idx = QC_metrics['FR_baseline_cutoff'] & QC_metrics['FR_task_cutoff'] & QC_metrics['FR_all_cutoff']  
+    
+    num_good_channels = np.sum(good_channels_idx==True)
+    
+    # Plot quality control: 
+    
+    fig=[]
+    if(plot_figures):
+        
+        fig=make_subplots(rows=2, cols=4, subplot_titles=['FR baseline','FR task','FR all','FR drift'])
+        
+        
+        fig.add_trace(go.Histogram(x=QC_metrics['FR_baseline'],marker_color='blue', xbins=dict(
+            start=0, size=1)),row=1,col=1)
+        fig.add_trace(go.Histogram(x=QC_metrics['FR_task'],marker_color='blue', xbins=dict(
+            start=0, size=1)),row=1,col=2)
+        fig.add_trace(go.Histogram(x=QC_metrics['FR_all'],marker_color='blue', xbins=dict(
+            start=0, size=1)),row=1,col=3)
+        fig.add_trace(go.Histogram(x=QC_metrics['FR_drift'],marker_color='blue', xbins=dict(
+            start=0)),row=1,col=4)
+
+        fig['layout']['title']=" Number of good channels: "+str(num_good_channels)
+    
+    return QC_metrics, good_channels_idx, num_good_channels, fig
+    
+    
+    
+    
+def get_condition_axes(spike_count, labels, axis_method='PCA',remove_nan_cols=False):
     '''
     Wrapper function to compute the 'condition' axes for dimensionality reduction or classification.
     It computes the axes based on the specified method, which can be either 'PCA' or 'LDA'.
@@ -61,7 +150,7 @@ def get_condition_axes(spike_count, labels, axis_method='PCA'):
         # If LDA is chosen for maximizing class separability:
         
         # Compute the top N Linear Discriminant Axes using LDA
-        condition_axes = compute_LDA_axes(spike_count, labels, N=N)
+        condition_axes = compute_LDA_axes(spike_count, labels, N=N, remove_nan_cols=remove_nan_cols)
    
     elif axis_method == 'delta_mean':
         # If delta_mean is chosen for dimensionality reduction:
@@ -128,7 +217,7 @@ def compute_mean_spike_count(spike_count, labels):
         condition_trials = np.where(labels == label)[0]
         
         # Compute the mean spike count for each channel in the current condition
-        mean_spike_count[i, :] = np.mean(spike_count[condition_trials, :], axis=0)
+        mean_spike_count[i, :] = np.nanmean(spike_count[condition_trials, :], axis=0)
         
         
     return mean_spike_count
@@ -147,11 +236,13 @@ def compute_PCA_axes(X, N=1):
     - top_n_components: 2D NumPy array of shape (num_variables x N),
                          where each column is a principal component.
     """
-    
-    # Step 1: Standardize the data (zero mean, unit variance)
-    X_centered = X - np.mean(X, axis=0)  # Subtract the mean of each column
-    X_standardized = X_centered / np.std(X, axis=0)  # Divide by the std of each column
-    
+    if(np.shape(X)[0]>2):
+        
+        # Step 1: Standardize the data (zero mean, unit variance)
+        X_centered = X - np.mean(X, axis=0)  # Subtract the mean of each column
+        X_standardized = X_centered / np.std(X, axis=0)  # Divide by the std of each column
+    else:
+        X_standardized=X - np.mean(X, axis=0)
     # Step 2: Perform Singular Value Decomposition (SVD)
     # SVD decomposes X = U * S * V^T
     U, S, Vt = svd(X_standardized, full_matrices=False)  # full_matrices=False for economy size
@@ -162,37 +253,57 @@ def compute_PCA_axes(X, N=1):
     return top_n_components
 
 
-    
 
-def compute_LDA_axes(X, labels, N=1):
+
+import numpy as np
+from sklearn.discriminant_analysis import LinearDiscriminantAnalysis as LDA
+
+def compute_LDA_axes(X, labels, N=1, remove_nan_cols=False):
     """
     Function to compute the top N LDA axes that best separate the classes.
-    
+
     Parameters:
-    - X(ndarray): A (num_observations x num_variables) array 
+    - X (ndarray): A (num_observations x num_variables) array 
     - labels (ndarray): A (num_observations,) array of class labels.
     - N (int): Number of top linear combinations to return.
-    
+    - remove_nan_cols (bool): If True, removes columns with any NaNs *after* standardization,
+                              and restores NaNs in those positions in the output.
+
     Returns:
-    - LDA_axes (ndarray): The top N linear combinations of variables (the directions that
-                                       best separate the classes).
+    - LDA_axes (ndarray): A (num_variables x N) array where each column is a
+                          linear combination (direction) that best separates the classes.
+                          Columns with NaNs in input are restored as NaNs in output.
     """
-    # Step 1: Standardize the data (zero mean, unit variance)
-    X_centered = X - np.mean(X, axis=0)  # Subtract the mean of each column
-    X_standardized = X_centered / np.std(X, axis=0)  # Divide by the std of each column
+    X = np.array(X)
+    original_num_vars = X.shape[1]
 
-    # Perform Linear Discriminant Analysis (LDA)
+    # Standardize with NaN-aware operations
+    means = np.nanmean(X, axis=0)
+    stds = np.nanstd(X, axis=0)
+    X_standardized = (X - means) / stds
+
+    if remove_nan_cols:
+        # Identify columns without any NaNs *after* standardization
+        good_cols = ~np.any(np.isnan(X_standardized), axis=0)
+        X_clean = X_standardized[:, good_cols]
+    else:
+        X_clean = X_standardized
+        good_cols = np.ones(X.shape[1], dtype=bool)
+
+    # Fit LDA on clean data
     lda = LDA(n_components=N)
-    lda.fit(X_standardized, labels)
+    lda.fit(X_clean, labels)
+    axes = lda.coef_.T  # shape: (num_good_vars x N)
 
-    # The coefficients (weights) of the linear discriminants
-    # These coefficients define the linear combinations of neurons
-    # that best separate the classes.
-    LDA_axes = lda.coef_
+    if remove_nan_cols:
+        # Reinsert NaNs in removed column positions
+        full_axes = np.full((original_num_vars, N), np.nan)
+        full_axes[good_cols, :] = axes
+        return full_axes
+    else:
+        return axes
 
-    return LDA_axes.T
-
-
+  
 def project_on_axis(X, axes, data_for_standardizing='none', X_orig=0, center_projections = True):
     """
     Projects the input data `X` onto the given axes after standardizing the data.
@@ -229,8 +340,10 @@ def project_on_axis(X, axes, data_for_standardizing='none', X_orig=0, center_pro
     
     # Step 2: Project the standardized data onto the provided axes
     projected_data = np.dot(X_standardized, axes.T)  # Perform matrix multiplication to project onto axes
+
     
     if center_projections:
+        
         projected_data = projected_data - np.mean(projected_data)
         
     return projected_data
@@ -341,7 +454,7 @@ def behavior_decoder(neural_data, behavior_labels, train_window=None, bin_size=2
             raise ValueError("Invalid classifier specified. Choose 'naive_bayes' or 'lda'.")
         
         # Initialize the KFold cross-validator
-        kf = KFold(n_splits=cv_folds, shuffle=True, random_state=420)
+        kf = KFold(n_splits=cv_folds, shuffle=True, random_state=42)
         
         # List to store the accuracy for each fold
         fold_accuracies = []
@@ -363,6 +476,12 @@ def behavior_decoder(neural_data, behavior_labels, train_window=None, bin_size=2
             # Test the classifier on the test fold
             test_accuracy = clf.score(X_test, y_test)
             fold_accuracies.append(test_accuracy)
+            # Predicted class
+            y_pred = clf.predict(X_test)
+
+            # Confidence as posterior probability (normalized)
+            probs = clf.predict_proba(X_test)  # shape = (n_samples, n_classes)
+            confidence = probs.max(axis=1)     # highest probability per sample
             
         # Calculate the mean accuracy across folds for this bin
         mean_fold_accuracy = np.mean(fold_accuracies)
@@ -410,13 +529,13 @@ def decode_by_sess(df_behav_date, neural_data, subselect_conditions, train_condi
     if(all_split_conditions):
         df_behav_date, idx_match = subsample_trials_df(df_behav_date,min_trials,return_indices=True)
         neural_data = neural_data[idx_match]
-#         print(min_trials)
+        print(min_trials)
         
     acc_sess = behavior_decoder(neural_data, df_behav_date[test_condition], bin_size=bin_size, train_window=train_window, train_labels = df_behav_date[train_condition], subsample_flag = subsample_flag)
     
     return acc_sess
 
-def ring_plot_by_sess(df_behav_date, neural_data, subselect_conditions_train, subselect_conditions_test, train_condition, test_condition, train_window=[700,1000],test_window=[700,1000]):
+def ring_plot_by_sess(df_behav_date, neural_data, subselect_conditions_train, subselect_conditions_test, train_condition, test_condition, train_window=[700,1000],test_window=[700,1000],use_axis=False, special_axis=None, return_space=False, axis_method="PCA"):
     
     """
     Compute projections onto top 2 dimensions for the session data based on behavioral and neural data.
@@ -444,18 +563,20 @@ def ring_plot_by_sess(df_behav_date, neural_data, subselect_conditions_train, su
     
     # Bin the training spike counts within the specified time window (e.g., [750, 1000] ms)
     spike_count_bin = np.nanmean(train_data[:,:,train_window[0]:train_window[1]], 2)  # Mean across time window
-    mean_spike_count_bin = np.mean(spike_count_bin,0)
+    mean_spike_count_bin = np.nanmean(spike_count_bin,0)
     train_labels=df_behav_date_train[train_condition]
     
     # Get the condition axis based on the selected axis method (e.g., LDA, PCA, etc.)
-    cond_axis = get_condition_axes(spike_count_bin, train_labels, axis_method='PCA')
-#     cond_axis=cond_axis/np.linalg.norm(cond_axis)
-    
+    cond_axis = get_condition_axes(spike_count_bin, train_labels, axis_method=axis_method)
+    cond_axis=cond_axis/np.linalg.norm(cond_axis)
+    if(use_axis):
+        cond_axis=special_axis
+        
     # Project the test data onto the condition axis
     spike_count_test_bin = np.nanmean(test_data[:,:,test_window[0]:test_window[1]], 2)  # Mean across time window
     test_labels=df_behav_date_test[test_condition]
     
-    proj_data = project_on_axis((spike_count_test_bin)-mean_spike_count_bin, np.transpose(cond_axis[:, :2]))
+    proj_data = project_on_axis((spike_count_test_bin), np.transpose(cond_axis[:, :2]),center_projections=True)
     
     # Get all unique labels for the test data
     all_test_labels = np.unique(test_labels)
@@ -464,12 +585,14 @@ def ring_plot_by_sess(df_behav_date, neural_data, subselect_conditions_train, su
     proj_data_for_condition=[]
     for i in all_test_labels:
         # For each condition (label), get the corresponding projected data
-        proj_data_for_condition.append(np.nanmean(proj_data[test_labels == i,:],0) * (1000 ))  # Convert to spikes per second
+        proj_data_for_condition.append(np.nanmean(proj_data[test_labels == i,:],0) * (1 ))  # Convert to spikes per second
         
     proj_data_for_condition.append(proj_data_for_condition[0])
     
-
-    return proj_data_for_condition
+    if(return_space):
+        return proj_data_for_condition,cond_axis
+    else:
+        return proj_data_for_condition
 
 
 
