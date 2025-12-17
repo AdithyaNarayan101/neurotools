@@ -24,16 +24,66 @@ def create_3d_array(arrays):
     return result
 
 
-def smooth(data, window_size=35):
-        window = np.ones(window_size) / window_size
+from scipy.ndimage import gaussian_filter1d
 
-        if data.ndim == 1:
-            return np.convolve(data, window, mode='same')
-        elif data.ndim == 2:
-            return np.array([np.convolve(row, window, mode='same') for row in data])
-        else:
-            raise ValueError("Input data must be 1D or 2D")
-            
+import numpy as np
+
+def smooth_exp(data, tau=20):
+    """
+    Smooth 1D or 2D data using a causal exponential filter.
+
+    Parameters
+    ----------
+    data : np.ndarray
+        1D (time,) or 2D (trials, time) array
+    tau : float
+        Time constant in number of samples (controls smoothing width)
+
+    Returns
+    -------
+    smoothed_data : np.ndarray
+        Smoothed data with the same shape as input
+    """
+    alpha = 1 / tau
+    if data.ndim == 1:
+        y = np.zeros_like(data)
+        y[0] = data[0]
+        for t in range(1, len(data)):
+            y[t] = alpha * data[t] + (1 - alpha) * y[t-1]
+        return y
+    elif data.ndim == 2:
+        y = np.zeros_like(data)
+        for i in range(data.shape[0]):
+            y[i, 0] = data[i, 0]
+            for t in range(1, data.shape[1]):
+                y[i, t] = alpha * data[i, t] + (1 - alpha) * y[i, t-1]
+        return y
+    else:
+        raise ValueError("Input data must be 1D or 2D")
+
+def smooth(data, sigma=35):
+    """
+    Smooth 1D or 2D data with a Gaussian filter.
+    
+    Parameters
+    ----------
+    data : np.ndarray
+        1D (time,) or 2D (trials, time) array
+    sigma : float
+        Standard deviation of Gaussian kernel in number of samples
+
+    Returns
+    -------
+    smoothed_data : np.ndarray
+        Smoothed data with the same shape as input
+    """
+    if data.ndim == 1:
+        return gaussian_filter1d(data, sigma=sigma)
+    elif data.ndim == 2:
+        return np.array([gaussian_filter1d(row, sigma=sigma) for row in data])
+    else:
+        raise ValueError("Input data must be 1D or 2D")
+
            
 def convert_to_0_to_360(theta_list):
     # Convert each angle in the list
