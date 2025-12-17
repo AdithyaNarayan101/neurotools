@@ -16,6 +16,39 @@ import plotly.colors
 import matplotlib.colors as mcolors
 from tools.neural_analyses import *
 from scipy.stats import zscore
+
+import plotly.io as pio
+
+def set_ploty_defaults():
+    pio.templates["my_default"] = pio.templates["plotly_white"].update({
+        "layout": {
+            "font": {
+                "family": "Arial",
+                "size": 20,        # global base font size
+                "color": "black",
+            },
+            "title": {
+                "font": {"size": 30}
+            },
+            "xaxis": {
+                "title": {"font": {"size": 25}},
+                "tickfont": {"size": 20},
+            },
+            "yaxis": {
+                "title": {"font": {"size": 25}},
+                "tickfont": {"size": 20},
+            },
+            "legend": {
+                "font": {"size": 20}
+            },
+            "margin": {"l": 70, "r": 30, "t": 60, "b": 60},
+        }
+    })
+
+    pio.templates.default = "my_default"
+
+
+
 """
 Define color maps
 """
@@ -766,3 +799,66 @@ def plot_single_neuron_direction_tuning(fig, spike_count, direction_labels, colo
     theta = convert_to_0_to_360(theta)
     return fig, R, theta, p_values_tuning
 
+
+
+# RT vs Neural change time correlation: 
+
+
+from scipy.stats import spearmanr
+from sklearn.linear_model import LinearRegression
+
+def plot_rt_vs_signal(RT, signal, title_prefix="RT vs signal"):
+    """
+    Plot RT vs neural/behavioral signal time, compute Spearman correlation and R^2.
+
+    Parameters
+    ----------
+    RT : np.ndarray
+        Reaction times per trial
+    signal : np.ndarray
+        Signal times or strength per trial (same length as RT) 
+    title_prefix : str
+        Optional prefix for plot title
+
+    Returns
+    -------
+    fig : plotly.graph_objects.Figure
+        Scatter plot figure
+    rho : float
+        Spearman rank correlation coefficient
+    r2_percent : float
+        Percentage of variance in RT explained by signal time
+    """
+    # Remove NaNs
+    mask = ~np.isnan(RT) & ~np.isnan(signal)
+    rt_clean = RT[mask]
+    sig_clean = signal[mask]
+
+    # Spearman correlation
+    rho, _ = spearmanr(sig_clean, rt_clean)
+
+    # Linear regression R^2
+    X = sig_clean.reshape(-1, 1)
+    y = rt_clean
+    model = LinearRegression().fit(X, y)
+    r2_percent = model.score(X, y) * 100
+
+    # Scatter plot
+    fig = go.Figure(go.Scatter(
+        x=sig_clean,
+        y=rt_clean,
+        mode='markers',
+        marker=dict(color='blue', size=6),
+        name='Trials'
+    ))
+
+    fig.update_layout(
+        xaxis_title='Neural signal',
+        yaxis_title='Reaction time (ms)',
+        title=f'{title_prefix} (Spearman rho = {rho:.2f}, R² = {r2_percent:.1f}%)',
+        template='simple_white'
+    )
+
+    fig.show()
+
+    return fig, rho, r2_percent
