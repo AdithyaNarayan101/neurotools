@@ -207,7 +207,6 @@ def compute_mean_spike_count(spike_count, labels):
     
     # Get the unique conditions (labels)
     unique_labels = np.unique(labels)
-    
     # Initialize an array to hold the mean spike counts for each condition and channel
     mean_spike_count = np.zeros((len(unique_labels), spike_count.shape[1]))
     
@@ -215,7 +214,6 @@ def compute_mean_spike_count(spike_count, labels):
     for i, label in enumerate(unique_labels):
         # Get the indices of trials that belong to the current condition
         condition_trials = np.where(labels == label)[0]
-        
         # Compute the mean spike count for each channel in the current condition
         mean_spike_count[i, :] = np.nanmean(spike_count[condition_trials, :], axis=0)
         
