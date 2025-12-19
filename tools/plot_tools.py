@@ -807,7 +807,7 @@ def plot_single_neuron_direction_tuning(fig, spike_count, direction_labels, colo
 from scipy.stats import spearmanr
 from sklearn.linear_model import LinearRegression
 
-def plot_rt_vs_signal(RT, signal, title_prefix="RT vs signal"):
+def plot_rt_vs_signal(RT, signal, title_prefix="RT vs signal", fig=None, col_marker='blue'):
     """
     Plot RT vs neural/behavioral signal time, compute Spearman correlation and R^2.
 
@@ -844,11 +844,14 @@ def plot_rt_vs_signal(RT, signal, title_prefix="RT vs signal"):
     r2_percent = model.score(X, y) * 100
 
     # Scatter plot
-    fig = go.Figure(go.Scatter(
+    if fig is None:
+        fig = go.Figure()
+    
+    fig.add_trace(go.Scatter(
         x=sig_clean,
         y=rt_clean,
         mode='markers',
-        marker=dict(color='blue', size=6),
+        marker=dict(color=col_marker, size=6),
         name='Trials'
     ))
 
